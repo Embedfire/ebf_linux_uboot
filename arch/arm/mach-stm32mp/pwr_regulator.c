@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <regmap.h>
 #include <syscon.h>
+#include <asm/arch/stm32mp1_smc.h>
 #include <power/pmic.h>
 #include <power/regulator.h>
 
@@ -32,13 +33,20 @@ struct stm32mp_pwr_priv {
 static int stm32mp_pwr_write(struct udevice *dev, uint reg,
 			     const uint8_t *buff, int len)
 {
+#ifndef CONFIG_STM32MP1_TRUSTED
 	struct stm32mp_pwr_priv *priv = dev_get_priv(dev);
+#endif
 	u32 val = *(u32 *)buff;
 
 	if (len != 4)
 		return -EINVAL;
 
+#ifdef CONFIG_STM32MP1_TRUSTED
+	return stm32_smc_exec(STM32_SMC_PWR, STM32_SMC_REG_WRITE,
+			      STM32MP_PWR_CR3, val);
+#else /* CONFIG_STM32MP1_TRUSTED */
 	return regmap_write(priv->regmap, STM32MP_PWR_CR3, val);
+#endif /* CONFIG_STM32MP1_TRUSTED */
 }
 
 static int stm32mp_pwr_read(struct udevice *dev, uint reg, uint8_t *buff,
