@@ -9,4 +9,11 @@ config SYS_VENDOR
 config SYS_CONFIG_NAME
 	default "stm32mp1"
 
+config CMD_STBOARD
+	bool "stboard - command for OTP board information"
+	default y
+	help
+	  This compile the stboard command to
+	  read and write the board in the OTP.
+
 endif
