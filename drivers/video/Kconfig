@@ -73,6 +73,13 @@ config VIDEO_ANSI
 	  Enable ANSI escape sequence decoding for a more fully functional
 	  console.
 
+config VIDEO_MIPI_DSI
+	bool
+	help
+	  Support MIPI DSI interface for driving a MIPI compatible device.
+	  The MIPI Display Serial Interface (MIPI DSI) defines a high-speed
+	  serial interface between a host processor and a display module.
+
 config CONSOLE_NORMAL
 	bool "Support a simple text console"
 	depends on DM_VIDEO
@@ -319,6 +326,22 @@ config VIDEO_LCD_ANX9804
 	Support for the ANX9804 bridge chip, which can take pixel data coming
 	from a parallel LCD interface and translate it on the fy into a DP
 	interface for driving eDP TFT displays. It uses I2C for configuration.
+
+config VIDEO_LCD_ORISETECH_OTM8009A
+	bool "OTM8009A DSI LCD panel support"
+	depends on DM_VIDEO
+	select VIDEO_MIPI_DSI
+	default n
+	---help---
+	Support for Orise Tech otm8009a 480p dsi 2dl video mode panel.
+
+config VIDEO_LCD_RAYDIUM_RM68200
+	bool "RM68200 DSI LCD panel support"
+	depends on DM_VIDEO
+	select VIDEO_MIPI_DSI
+	default n
+	---help---
+	Support for Raydium rm68200 720x1280 dsi 2dl video mode panel.
 
 config VIDEO_LCD_SSD2828
 	bool "SSD2828 bridge chip"
@@ -676,6 +699,16 @@ config VIDEO_DW_HDMI
 	bool
 	help
 	  Enables the common driver code for the Designware HDMI TX
+	  block found in SoCs from various vendors.
+	  As this does not provide any functionality by itself (but
+	  rather requires a SoC-specific glue driver to call it), it
+	  can not be enabled from the configuration menu.
+
+config VIDEO_DW_MIPI_DSI
+	bool
+	select VIDEO_MIPI_DSI
+	help
+	  Enables the common driver code for the Synopsis Designware
 	  block found in SoCs from various vendors.
 	  As this does not provide any functionality by itself (but
 	  rather requires a SoC-specific glue driver to call it), it

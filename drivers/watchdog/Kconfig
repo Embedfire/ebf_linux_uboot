@@ -103,6 +103,21 @@ config WDT_CDNS
 	   Select this to enable Cadence watchdog timer, which can be found on some
 	   Xilinx Microzed Platform.
 
+config STM32MP_WATCHDOG
+	bool "Enable IWDG watchdog driver for STM32 MP's family"
+	depends on ARCH_STM32MP
+	select HW_WATCHDOG
+	help
+		Enable the STM32 watchdog (IWDG) driver. Enable support to
+		configure STM32's on-SoC watchdog.
+
+config STM32MP_WATCHDOG_TIMEOUT_SECS
+	int "IWDG watchdog timeout"
+	depends on STM32MP_WATCHDOG
+	default 32
+	help
+		Configure the timeout for IWDG (default: 32s).
+
 config XILINX_TB_WATCHDOG
 	bool "Xilinx Axi watchdog timer support"
 	depends on WDT

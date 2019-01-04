@@ -14,6 +14,7 @@
 #include <mapmem.h>
 #include <spi.h>
 #include <spi_flash.h>
+#include <watchdog.h>
 #include <linux/log2.h>
 #include <linux/sizes.h>
 #include <dma.h>
@@ -357,6 +358,8 @@ int spi_flash_cmd_erase_ops(struct spi_flash *flash, u32 offset, size_t len)
 
 		offset += erase_size;
 		len -= erase_size;
+
+		WATCHDOG_RESET();
 	}
 
 #ifdef CONFIG_SPI_FLASH_BAR
@@ -419,6 +422,8 @@ int spi_flash_cmd_write_ops(struct spi_flash *flash, u32 offset,
 		}
 
 		offset += chunk_len;
+
+		WATCHDOG_RESET();
 	}
 
 #ifdef CONFIG_SPI_FLASH_BAR
@@ -525,6 +530,8 @@ int spi_flash_cmd_read_ops(struct spi_flash *flash, u32 offset,
 		offset += read_len;
 		len -= read_len;
 		data += read_len;
+
+		WATCHDOG_RESET();
 	}
 
 #ifdef CONFIG_SPI_FLASH_BAR
@@ -769,6 +776,8 @@ int sst_write_wp(struct spi_flash *flash, u32 offset, size_t len,
 
 		cmd_len = 1;
 		offset += 2;
+
+		WATCHDOG_RESET();
 	}
 
 	if (!ret)

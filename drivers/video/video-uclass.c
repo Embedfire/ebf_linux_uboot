@@ -300,3 +300,17 @@ UCLASS_DRIVER(video) = {
 	.per_device_auto_alloc_size	= sizeof(struct video_priv),
 	.per_device_platdata_auto_alloc_size = sizeof(struct video_uc_platdata),
 };
+
+static int do_video_clear(cmd_tbl_t *cmdtp, int flag, int argc,
+			  char *const argv[])
+{
+	struct udevice *dev;
+
+	if (uclass_first_device_err(UCLASS_VIDEO, &dev))
+		return CMD_RET_FAILURE;
+	video_clear(dev);
+
+	return 0;
+}
+
+U_BOOT_CMD(cls,	1, 1, do_video_clear, "clear screen", "");

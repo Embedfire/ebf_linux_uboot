@@ -425,6 +425,9 @@ static void reconfig_usbd(struct dwc2_udc *dev)
 
 	writel(dflt_gusbcfg, &reg->gusbcfg);
 
+	if (dev->pdata->usb_gotgctl)
+		setbits_le32(&reg->gotgctl, dev->pdata->usb_gotgctl);
+
 	/* 3. Put the OTG device core in the disconnected state.*/
 	uTemp = readl(&reg->dctl);
 	uTemp |= SOFT_DISCONNECT;

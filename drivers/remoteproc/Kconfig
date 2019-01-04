@@ -49,4 +49,13 @@ config REMOTEPROC_TI_POWER
 	help
 	  Say 'y' here to add support for TI power processors such as those
 	  found on certain TI keystone and OMAP generation SoCs.
+
+config REMOTEPROC_STM32_COPRO
+	bool "Support for STM32 Co-processor"
+	select REMOTEPROC
+	depends on DM
+	depends on ARCH_STM32MP
+	depends on OF_CONTROL
+	help
+	  Say 'y' here to add support for STM32 Cortex-M4 co-processors.
 endmenu

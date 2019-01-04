@@ -123,52 +123,49 @@ U_BOOT_DRIVER(generic_syscon) = {
  * The syscon node can be bound to another driver, but still works
  * as a syscon provider.
  */
-static LIST_HEAD(syscon_list);
-
-struct syscon {
-	ofnode node;
-	struct regmap *regmap;
-	struct list_head list;
-};
-
-static struct syscon *of_syscon_register(ofnode node)
+struct regmap *syscon_node_to_regmap(ofnode node)
 {
-	struct syscon *syscon;
+	struct udevice *dev, *parent;
+	ofnode ofnode = node;
 	int ret;
+
+	if (!uclass_get_device_by_ofnode(UCLASS_SYSCON, node, &dev))
+		return syscon_get_regmap(dev);
 
 	if (!ofnode_device_is_compatible(node, "syscon"))
 		return ERR_PTR(-EINVAL);
 
-	syscon = malloc(sizeof(*syscon));
-	if (!syscon)
-		return ERR_PTR(-ENOMEM);
+	if (device_find_global_by_ofnode(ofnode, &parent))
+		parent = dm_root();
 
-	ret = regmap_init_mem(node, &syscon->regmap);
-	if (ret) {
-		free(syscon);
+	/* force bound to syscon class */
+	ret = device_bind_driver_to_node(parent, "syscon",
+					 ofnode_get_name(node),
+					 node, &dev);
+	if (ret)
 		return ERR_PTR(ret);
-	}
 
-	list_add_tail(&syscon->list, &syscon_list);
+	ret = device_probe(dev);
+	if (ret)
+		return ERR_PTR(ret);
 
-	return syscon;
+	return syscon_get_regmap(dev);
 }
 
-struct regmap *syscon_node_to_regmap(ofnode node)
+struct regmap *syscon_phandle_to_regmap(struct udevice *parent,
+					const char *name)
 {
-	struct syscon *entry, *syscon = NULL;
+	u32 phandle;
+	ofnode node;
+	int err;
 
-	list_for_each_entry(entry, &syscon_list, list)
-		if (ofnode_equal(entry->node, node)) {
-			syscon = entry;
-			break;
-		}
+	err = ofnode_read_u32(dev_ofnode(parent), name, &phandle);
+	if (err)
+		return ERR_PTR(err);
 
-	if (!syscon)
-		syscon = of_syscon_register(node);
+	node = ofnode_get_by_phandle(phandle);
+	if (!ofnode_valid(node))
+		return ERR_PTR(-EINVAL);
 
-	if (IS_ERR(syscon))
-		return ERR_CAST(syscon);
-
-	return syscon->regmap;
+	return syscon_node_to_regmap(node);
 }

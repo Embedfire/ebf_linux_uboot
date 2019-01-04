@@ -78,11 +78,18 @@ static int spl_spi_load_image(struct spl_image_info *spl_image,
 	/*
 	 * Load U-Boot image from SPI flash into RAM
 	 */
-
+#ifdef CONFIG_DM_SPI_FLASH
+	/* In DM mode defaults will be taken from DT */
+	flash = spi_flash_probe(CONFIG_SF_DEFAULT_BUS,
+				CONFIG_SF_DEFAULT_CS,
+				0,
+				0);
+#else
 	flash = spi_flash_probe(CONFIG_SF_DEFAULT_BUS,
 				CONFIG_SF_DEFAULT_CS,
 				CONFIG_SF_DEFAULT_SPEED,
 				CONFIG_SF_DEFAULT_MODE);
+#endif
 	if (!flash) {
 		puts("SPI probe failed.\n");
 		return -ENODEV;

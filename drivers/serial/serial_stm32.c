@@ -7,6 +7,7 @@
 #include <common.h>
 #include <clk.h>
 #include <dm.h>
+#include <reset.h>
 #include <serial.h>
 #include <watchdog.h>
 #include <asm/io.h>
@@ -57,6 +58,14 @@ static int stm32_serial_setconfig(struct udevice *dev, uint serial_config)
 	uint parity = SERIAL_GET_PARITY(serial_config);
 	uint bits = SERIAL_GET_BITS(serial_config);
 	uint stop = SERIAL_GET_STOP(serial_config);
+
+	/*
+	 * only parity config is implemented, check if other serial settings
+	 * are the default one.
+	 * (STM32F4 serial IP didn't support parity setting)
+	 */
+	if (bits != SERIAL_8_BITS || stop != SERIAL_ONE_STOP || stm32f4)
+		return -ENOTSUPP; /* not supported in driver*/
 
 	/*
 	 * only parity config is implemented, check if other serial settings
@@ -171,6 +180,7 @@ static int stm32_serial_probe(struct udevice *dev)
 {
 	struct stm32x7_serial_platdata *plat = dev_get_platdata(dev);
 	struct clk clk;
+	struct reset_ctl reset;
 	int ret;
 
 	plat->uart_info = (struct stm32_uart_info *)dev_get_driver_data(dev);
@@ -183,6 +193,13 @@ static int stm32_serial_probe(struct udevice *dev)
 	if (ret) {
 		dev_err(dev, "failed to enable clock\n");
 		return ret;
+	}
+
+	ret = reset_get_by_index(dev, 0, &reset);
+	if (!ret) {
+		reset_assert(&reset);
+		udelay(2);
+		reset_deassert(&reset);
 	}
 
 	plat->clock_rate = clk_get_rate(&clk);
@@ -258,7 +275,6 @@ static inline void _debug_uart_init(void)
 	_stm32_serial_setbrg(base, uart_info,
 			     CONFIG_DEBUG_UART_CLOCK,
 			     CONFIG_BAUDRATE);
-	printf("DEBUG done\n");
 }
 
 static inline void _debug_uart_putc(int c)

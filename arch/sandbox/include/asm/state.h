@@ -97,6 +97,7 @@ struct sandbox_state {
 	/* Information about Watchdog */
 	struct sandbox_wdt_info wdt;
 
+	bool hwspinlock;		/* Hardware Spinlock status */
 	ulong next_tag;			/* Next address tag to allocate */
 	struct list_head mapmem_head;	/* struct sandbox_mapmem_entry */
 };

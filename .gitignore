@@ -88,3 +88,6 @@ GTAGS
 *.orig
 *~
 \#*#
+
+/oe-*
+bitbake-cookerdaemon.log

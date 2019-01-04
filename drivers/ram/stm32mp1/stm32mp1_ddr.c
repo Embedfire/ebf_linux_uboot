@@ -165,6 +165,32 @@ static const struct reg_desc ddrphy_cal[] = {
 	DDRPHY_REG_CAL(dx3dqstr),
 };
 
+#define DDR_REG_DYN(x) \
+	{#x,\
+	 offsetof(struct stm32mp1_ddrctl, x),\
+	 INVALID_OFFSET}
+
+static const struct reg_desc ddr_dyn[] = {
+	DDR_REG_DYN(stat),
+	DDR_REG_DYN(init0),
+	DDR_REG_DYN(dfimisc),
+	DDR_REG_DYN(dfistat),
+	DDR_REG_DYN(swctl),
+	DDR_REG_DYN(swstat),
+	DDR_REG_DYN(pctrl_0),
+	DDR_REG_DYN(pctrl_1),
+};
+
+#define DDRPHY_REG_DYN(x) \
+	{#x,\
+	 offsetof(struct stm32mp1_ddrphy, x),\
+	 INVALID_OFFSET}
+
+static const struct reg_desc ddrphy_dyn[] = {
+	DDRPHY_REG_DYN(pir),
+	DDRPHY_REG_DYN(pgsr),
+};
+
 enum reg_type {
 	REG_REG,
 	REG_TIMING,
@@ -173,6 +199,11 @@ enum reg_type {
 	REGPHY_REG,
 	REGPHY_TIMING,
 	REGPHY_CAL,
+/* dynamic registers => managed in driver or not changed,
+ * can be dumped in interactive mode
+ */
+	REG_DYN,
+	REGPHY_DYN,
 	REG_TYPE_NB
 };
 
@@ -206,6 +237,10 @@ const struct ddr_reg_info ddr_registers[REG_TYPE_NB] = {
 	"timing", ddrphy_timing, ARRAY_SIZE(ddrphy_timing), DDRPHY_BASE},
 [REGPHY_CAL] = {
 	"cal", ddrphy_cal, ARRAY_SIZE(ddrphy_cal), DDRPHY_BASE},
+[REG_DYN] = {
+	"dyn", ddr_dyn, ARRAY_SIZE(ddr_dyn), DDR_BASE},
+[REGPHY_DYN] = {
+	"dyn", ddrphy_dyn, ARRAY_SIZE(ddrphy_dyn), DDRPHY_BASE},
 };
 
 const char *base_name[] = {
@@ -277,10 +312,247 @@ void stm32mp1_ddrphy_init(struct stm32mp1_ddrphy *phy, u32 pir)
 	ddrphy_idone_wait(phy);
 }
 
+#ifdef CONFIG_STM32MP1_DDR_INTERACTIVE
+static void stm32mp1_dump_reg_desc(u32 base_addr, const struct reg_desc *desc)
+{
+	unsigned int *ptr;
+
+	ptr = (unsigned int *)(base_addr + desc->offset);
+#ifdef DEBUG
+	printf("[0x%08x] %s= 0x%08x\n",
+	       (u32)ptr, desc->name, readl(ptr));
+#else
+	printf("%s= 0x%08x\n", desc->name, readl(ptr));
+#endif
+}
+
+static void stm32mp1_dump_param_desc(u32 par_addr, const struct reg_desc *desc)
+{
+	unsigned int *ptr;
+
+	ptr = (unsigned int *)(par_addr + desc->par_offset);
+	printf("%s= 0x%08x\n", desc->name, readl(ptr));
+}
+
+static const struct reg_desc *found_reg(const char *name, enum reg_type *type)
+{
+	unsigned int i, j;
+	const struct reg_desc *desc;
+
+	for (i = 0; i < ARRAY_SIZE(ddr_registers); i++) {
+		desc = ddr_registers[i].desc;
+		for (j = 0; j < ddr_registers[i].size; j++) {
+			if (strcmp(name, desc[j].name) == 0) {
+				*type = i;
+				return &desc[j];
+			}
+		}
+	}
+	*type = REG_TYPE_NB;
+	return NULL;
+}
+
+int stm32mp1_dump_reg(const struct ddr_info *priv,
+		      const char *name)
+{
+	unsigned int i, j;
+	const struct reg_desc *desc;
+	u32 base_addr;
+	enum base_type p_base;
+	enum reg_type type;
+	const char *p_name;
+	enum base_type filter = NONE_BASE;
+	int result = -1;
+
+	if (name) {
+		if (strcmp(name, base_name[DDR_BASE]) == 0)
+			filter = DDR_BASE;
+		else if (strcmp(name, base_name[DDRPHY_BASE]) == 0)
+			filter = DDRPHY_BASE;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(ddr_registers); i++) {
+		p_base = ddr_registers[i].base;
+		p_name = ddr_registers[i].name;
+		if (!name || (filter == p_base || !strcmp(name, p_name))) {
+			result = 0;
+			desc = ddr_registers[i].desc;
+			base_addr = get_base_addr(priv, p_base);
+			printf("==%s.%s==\n", base_name[p_base], p_name);
+			for (j = 0; j < ddr_registers[i].size; j++)
+				stm32mp1_dump_reg_desc(base_addr, &desc[j]);
+		}
+	}
+	if (result) {
+		desc = found_reg(name, &type);
+		if (desc) {
+			p_base = ddr_registers[type].base;
+			base_addr = get_base_addr(priv, p_base);
+			stm32mp1_dump_reg_desc(base_addr, desc);
+			result = 0;
+		}
+	}
+	return result;
+}
+
+void stm32mp1_edit_reg(const struct ddr_info *priv,
+		       char *name, char *string)
+{
+	unsigned long *ptr, value;
+	enum reg_type type;
+	enum base_type base;
+	const struct reg_desc *desc;
+	u32 base_addr;
+
+	desc = found_reg(name, &type);
+
+	if (!desc) {
+		printf("%s not found\n", name);
+		return;
+	}
+	if (strict_strtoul(string, 16, &value) <  0) {
+		printf("invalid value %s\n", string);
+		return;
+	}
+	base = ddr_registers[type].base;
+	base_addr = get_base_addr(priv, base);
+	ptr = (unsigned long *)(base_addr + desc->offset);
+	writel(value, ptr);
+#ifdef DEBUG
+	printf("[0x%08x] %s= 0x%08lx (0x%08x)\n",
+	       (u32)ptr, desc->name, value, readl(ptr));
+#else
+	printf("%s= 0x%08x\n", desc->name, readl(ptr));
+#endif
+}
+
+static u32 get_par_addr(const struct stm32mp1_ddr_config *config,
+			enum reg_type type)
+{
+	u32 par_addr = 0x0;
+
+	switch (type) {
+	case REG_REG:
+		par_addr = (u32)&config->c_reg;
+		break;
+	case REG_TIMING:
+		par_addr = (u32)&config->c_timing;
+		break;
+	case REG_PERF:
+		par_addr = (u32)&config->c_perf;
+		break;
+	case REG_MAP:
+		par_addr = (u32)&config->c_map;
+		break;
+	case REGPHY_REG:
+		par_addr = (u32)&config->p_reg;
+		break;
+	case REGPHY_TIMING:
+		par_addr = (u32)&config->p_timing;
+		break;
+	case REGPHY_CAL:
+		par_addr = (u32)&config->p_cal;
+		break;
+	case REG_DYN:
+	case REGPHY_DYN:
+	case REG_TYPE_NB:
+		par_addr = (u32)NULL;
+		break;
+	}
+
+	return par_addr;
+}
+
+int stm32mp1_dump_param(const struct stm32mp1_ddr_config *config,
+			const char *name)
+{
+	unsigned int i, j;
+	const struct reg_desc *desc;
+	u32 par_addr;
+	enum base_type p_base;
+	enum reg_type type;
+	const char *p_name;
+	enum base_type filter = NONE_BASE;
+	int result = -EINVAL;
+
+	if (name) {
+		if (strcmp(name, base_name[DDR_BASE]) == 0)
+			filter = DDR_BASE;
+		else if (strcmp(name, base_name[DDRPHY_BASE]) == 0)
+			filter = DDRPHY_BASE;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(ddr_registers); i++) {
+		par_addr = get_par_addr(config, i);
+		if (!par_addr)
+			continue;
+		p_base = ddr_registers[i].base;
+		p_name = ddr_registers[i].name;
+		if (!name || (filter == p_base || !strcmp(name, p_name))) {
+			result = 0;
+			desc = ddr_registers[i].desc;
+			printf("==%s.%s==\n", base_name[p_base], p_name);
+			for (j = 0; j < ddr_registers[i].size; j++)
+				stm32mp1_dump_param_desc(par_addr, &desc[j]);
+		}
+	}
+	if (result) {
+		desc = found_reg(name, &type);
+		if (desc) {
+			par_addr = get_par_addr(config, type);
+			if (par_addr) {
+				stm32mp1_dump_param_desc(par_addr, desc);
+				result = 0;
+			}
+		}
+	}
+	return result;
+}
+
+void stm32mp1_edit_param(const struct stm32mp1_ddr_config *config,
+			 char *name, char *string)
+{
+	unsigned long *ptr, value;
+	enum reg_type type;
+	const struct reg_desc *desc;
+	u32 par_addr;
+
+	desc = found_reg(name, &type);
+	if (!desc) {
+		printf("%s not found\n", name);
+		return;
+	}
+	if (strict_strtoul(string, 16, &value) < 0) {
+		printf("invalid value %s\n", string);
+		return;
+	}
+	par_addr = get_par_addr(config, type);
+	if (!par_addr) {
+		printf("no parameter %s\n", name);
+		return;
+	}
+	ptr = (unsigned long *)(par_addr + desc->par_offset);
+	writel(value, ptr);
+	printf("%s= 0x%08x\n", desc->name, readl(ptr));
+}
+#endif
+
+__weak bool stm32mp1_ddr_interactive(void *priv,
+				     enum stm32mp1_ddr_interact_step step,
+				     const struct stm32mp1_ddr_config *config)
+{
+	return false;
+}
+
+#define INTERACTIVE(step)\
+	stm32mp1_ddr_interactive(priv, step, config)
+
 /* start quasi dynamic register update */
 static void start_sw_done(struct stm32mp1_ddrctl *ctl)
 {
 	clrbits_le32(&ctl->swctl, DDRCTRL_SWCTL_SW_DONE);
+	debug("[0x%08x] swctl = 0x%08x\n",
+	      (u32)&ctl->swctl,  readl(&ctl->swctl));
 }
 
 /* wait quasi dynamic register update */
@@ -312,7 +584,7 @@ static void wait_operating_mode(struct ddr_info *priv, int mode)
 	/* self-refresh due to software => check also STAT.selfref_type */
 	if (mode == DDRCTRL_STAT_OPERATING_MODE_SR) {
 		mask |= DDRCTRL_STAT_SELFREF_TYPE_MASK;
-		stat |= DDRCTRL_STAT_SELFREF_TYPE_SR;
+		val |= DDRCTRL_STAT_SELFREF_TYPE_SR;
 	} else if (mode == DDRCTRL_STAT_OPERATING_MODE_NORMAL) {
 		/* normal mode: handle also automatic self refresh */
 		mask2 = DDRCTRL_STAT_OPERATING_MODE_MASK |
@@ -330,6 +602,182 @@ static void wait_operating_mode(struct ddr_info *priv, int mode)
 		panic("Timeout DRAM : DDR->stat = %x\n", stat);
 
 	debug("[0x%08x] stat = 0x%08x\n", (u32)&priv->ctl->stat, stat);
+}
+
+/* Mode Register Writes (MRW or MRS) */
+void mode_register_write(struct ddr_info *priv, u8 addr, u16 data)
+{
+	u32 mrctrl0;
+
+	debug("MRS: %d = %x\n", addr, data);
+
+	/* 1. Poll MRSTAT.mr_wr_busy until it is '0'.
+	 *    This checks that there is no outstanding MR transaction.
+	 *    No writes should be performed to MRCTRL0 and MRCTRL1
+	 *    if MRSTAT.mr_wr_busy = 1.
+	 */
+	while (readl(&priv->ctl->mrstat) & DDRCTRL_MRSTAT_MR_WR_BUSY)
+		;
+
+	/* 2. Write the MRCTRL0.mr_type, MRCTRL0.mr_addr, MRCTRL0.mr_rank
+	 *    and (for MRWs) MRCTRL1.mr_data to define the MR transaction.
+	 */
+	mrctrl0 = DDRCTRL_MRCTRL0_MR_TYPE_WRITE |
+		  DDRCTRL_MRCTRL0_MR_RANK_ALL |
+		  ((addr << DDRCTRL_MRCTRL0_MR_ADDR_SHIFT)
+		   & DDRCTRL_MRCTRL0_MR_ADDR_MASK);
+	writel(mrctrl0, &priv->ctl->mrctrl0);
+	debug("[0x%08x] mrctrl0 = 0x%08x (0x%08x)\n",
+	      (u32)&priv->ctl->mrctrl0,
+	      readl(&priv->ctl->mrctrl0), mrctrl0);
+	writel(data, &priv->ctl->mrctrl1);
+	debug("[0x%08x] mrctrl1 = 0x%08x\n",
+	      (u32)&priv->ctl->mrctrl1, readl(&priv->ctl->mrctrl1));
+
+	/* 3. In a separate APB transaction, write the MRCTRL0.mr_wr to 1. This
+	 *    bit is self-clearing, and triggers the MR transaction.
+	 *    The uMCTL2 then asserts the MRSTAT.mr_wr_busy while it performs
+	 *    the MR transaction to SDRAM, and no further accesses can be
+	 *    initiated until it is deasserted
+	 */
+	mrctrl0 |= DDRCTRL_MRCTRL0_MR_WR;
+	writel(mrctrl0, &priv->ctl->mrctrl0);
+
+	while (readl(&priv->ctl->mrstat) & DDRCTRL_MRSTAT_MR_WR_BUSY)
+		;
+	debug("[0x%08x] mrctrl0 = 0x%08x\n",
+	      (u32)&priv->ctl->mrctrl0, mrctrl0);
+}
+
+/* switch DDR3 from DLL-on to DLL-off */
+static void ddr3_dll_off(struct ddr_info *priv)
+{
+	u32 mr1 = readl(&priv->phy->mr1);
+	u32 mr2 = readl(&priv->phy->mr2);
+	u32 dbgcam;
+
+	debug("%s: entry\n", __func__);
+	debug("mr1: 0x%08x\n", mr1);
+	debug("mr2: 0x%08x\n", mr2);
+	/* 1. Set the DBG1.dis_hif = 1.
+	 *    This prevents further reads/writes being received on the HIF.
+	 */
+	setbits_le32(&priv->ctl->dbg1, DDRCTRL_DBG1_DIS_HIF);
+	debug("[0x%08x] dbg1 = 0x%08x\n",
+	      (u32)&priv->ctl->dbg1, readl(&priv->ctl->dbg1));
+
+	/* 2. Ensure all commands have been flushed from the uMCTL2 by polling
+	 *    DBGCAM.wr_data_pipeline_empty = 1,
+	 *    DBGCAM.rd_data_pipeline_empty = 1,
+	 *    DBGCAM.dbg_wr_q_depth = 0 ,
+	 *    DBGCAM.dbg_lpr_q_depth = 0, and
+	 *    DBGCAM.dbg_hpr_q_depth = 0.
+	 */
+	do {
+		dbgcam = readl(&priv->ctl->dbgcam);
+		debug("[0x%08x] dbgcam = 0x%08x\n",
+		      (u32)&priv->ctl->dbgcam, dbgcam);
+	} while (((dbgcam & DDRCTRL_DBGCAM_DATA_PIPELINE_EMPTY) ==
+		   DDRCTRL_DBGCAM_DATA_PIPELINE_EMPTY) &&
+		 !(dbgcam & DDRCTRL_DBGCAM_DBG_Q_DEPTH));
+
+	/* 3. Perform an MRS command (using MRCTRL0 and MRCTRL1 registers)
+	 *    to disable RTT_NOM:
+	 *    a. DDR3: Write to MR1[9], MR1[6] and MR1[2]
+	 *    b. DDR4: Write to MR1[10:8]
+	 */
+	mr1 &= ~(BIT(9) | BIT(6) | BIT(2));
+	mode_register_write(priv, 1, mr1);
+
+	/* 4. For DDR4 only: Perform an MRS command
+	 *    (using MRCTRL0 and MRCTRL1 registers) to write to MR5[8:6]
+	 *    to disable RTT_PARK
+	 */
+
+	/* 5. Perform an MRS command (using MRCTRL0 and MRCTRL1 registers)
+	 *    to write to MR2[10:9], to disable RTT_WR
+	 *    (and therefore disable dynamic ODT).
+	 *    This applies for both DDR3 and DDR4.
+	 */
+	mr2 &= ~GENMASK(10, 9);
+	mode_register_write(priv, 2, mr2);
+
+	/* 6. Perform an MRS command (using MRCTRL0 and MRCTRL1 registers)
+	 *    to disable the DLL. The timing of this MRS is automatically
+	 *    handled by the uMCTL2.
+	 *    a. DDR3: Write to MR1[0]
+	 *    b. DDR4: Write to MR1[0]
+	 */
+	mr1 |= BIT(0);
+	mode_register_write(priv, 1, mr1);
+
+	/* 7. Put the SDRAM into self-refresh mode by setting
+	 *    PWRCTL.selfref_sw = 1, and polling STAT.operating_mode to ensure
+	 *    the DDRC has entered self-refresh.
+	 */
+	setbits_le32(&priv->ctl->pwrctl,
+		     DDRCTRL_PWRCTL_SELFREF_SW);
+	debug("[0x%08x] pwrctl = 0x%08x\n",
+	      (u32)&priv->ctl->pwrctl,
+	      readl(&priv->ctl->pwrctl));
+
+	/* 8. Wait until STAT.operating_mode[1:0]==11 indicating that the
+	 *    DWC_ddr_umctl2 core is in self-refresh mode.
+	 *    Ensure transition to self-refresh was due to software
+	 *    by checking that STAT.selfref_type[1:0]=2.
+	 */
+	wait_operating_mode(priv, DDRCTRL_STAT_OPERATING_MODE_SR);
+
+	/* 9. Set the MSTR.dll_off_mode = 1.
+	 *    warning: MSTR.dll_off_mode is a quasi-dynamic type 2 field
+	 */
+	start_sw_done(priv->ctl);
+
+	setbits_le32(&priv->ctl->mstr, DDRCTRL_MSTR_DLL_OFF_MODE);
+	debug("[0x%08x] mstr = 0x%08x\n",
+	      (u32)&priv->ctl->mstr,
+	      readl(&priv->ctl->mstr));
+
+	wait_sw_done_ack(priv->ctl);
+
+	/* 10. Change the clock frequency to the desired value. */
+
+	/* 11. Update any registers which may be required to change for the new
+	 *     frequency. This includes static and dynamic registers.
+	 *     This includes both uMCTL2 registers and PHY registers.
+	 */
+	/* change Bypass Mode Frequency Range */
+	if (clk_get_rate(&priv->clk) < 100000000)
+		clrbits_le32(&priv->phy->dllgcr, DDRPHYC_DLLGCR_BPS200);
+	else
+		setbits_le32(&priv->phy->dllgcr, DDRPHYC_DLLGCR_BPS200);
+
+	setbits_le32(&priv->phy->acdllcr, DDRPHYC_ACDLLCR_DLLDIS);
+
+	setbits_le32(&priv->phy->dx0dllcr, DDRPHYC_DXNDLLCR_DLLDIS);
+	setbits_le32(&priv->phy->dx1dllcr, DDRPHYC_DXNDLLCR_DLLDIS);
+	setbits_le32(&priv->phy->dx2dllcr, DDRPHYC_DXNDLLCR_DLLDIS);
+	setbits_le32(&priv->phy->dx3dllcr, DDRPHYC_DXNDLLCR_DLLDIS);
+
+	/* 12. Exit the self-refresh state by setting PWRCTL.selfref_sw = 0. */
+	clrbits_le32(&priv->ctl->pwrctl, DDRCTRL_PWRCTL_SELFREF_SW);
+	wait_operating_mode(priv, DDRCTRL_STAT_OPERATING_MODE_NORMAL);
+
+	/* 13. If ZQCTL0.dis_srx_zqcl = 0, the uMCTL2 performs a ZQCL command
+	 *     at this point.
+	 */
+
+	/* 14. Perform MRS commands as required to re-program timing registers
+	 *     in the SDRAM for the new frequency
+	 *     (in particular, CL, CWL and WR may need to be changed).
+	 */
+
+	/* 15. Write DBG1.dis_hif = 0 to re-enable reads and writes.*/
+	clrbits_le32(&priv->ctl->dbg1, DDRCTRL_DBG1_DIS_HIF);
+	debug("[0x%08x] dbg1 = 0x%08x\n",
+	      (u32)&priv->ctl->dbg1, readl(&priv->ctl->dbg1));
+
+	debug("%s: exit\n", __func__);
 }
 
 void stm32mp1_refresh_disable(struct stm32mp1_ddrctl *ctl)
@@ -355,7 +803,7 @@ void stm32mp1_refresh_restore(struct stm32mp1_ddrctl *ctl,
 }
 
 /* board-specific DDR power initializations. */
-__weak int board_ddr_power_init(void)
+__weak int board_ddr_power_init(enum ddr_type ddr_type)
 {
 	return 0;
 }
@@ -365,16 +813,25 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 		       const struct stm32mp1_ddr_config *config)
 {
 	u32 pir;
-	int ret;
+	int ret = -EINVAL;
 
-	ret = board_ddr_power_init();
+	if (config->c_reg.mstr & DDRCTRL_MSTR_DDR3)
+		ret = board_ddr_power_init(STM32MP_DDR3);
+	else if (config->c_reg.mstr & DDRCTRL_MSTR_LPDDR2)
+		ret = board_ddr_power_init(STM32MP_LPDDR2);
+	else if (config->c_reg.mstr & DDRCTRL_MSTR_LPDDR3)
+		ret = board_ddr_power_init(STM32MP_LPDDR3);
 
 	if (ret)
 		panic("ddr power init failed\n");
 
+start:
+	debug("%s entry\n", __func__);
+
 	debug("name = %s\n", config->info.name);
-	debug("speed = %d MHz\n", config->info.speed);
+	debug("speed = %d kHz\n", config->info.speed);
 	debug("size  = 0x%x\n", config->info.size);
+
 /*
  * 1. Program the DWC_ddr_umctl2 registers
  * 1.1 RESETS: presetn, core_ddrc_rstn, aresetn
@@ -389,7 +846,7 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 
 /* 1.2. start CLOCK */
 	if (stm32mp1_ddr_clk_enable(priv, config->info.speed))
-		panic("invalid DRAM clock : %d MHz\n",
+		panic("invalid DRAM clock : %d kHz\n",
 		      config->info.speed);
 
 /* 1.3. deassert reset */
@@ -401,11 +858,12 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 	 */
 	clrbits_le32(priv->rcc + RCC_DDRITFCR, RCC_DDRITFCR_DDRCAPBRST);
 
-/* 1.4. wait 4 cycles for synchronization */
-	asm(" nop");
-	asm(" nop");
-	asm(" nop");
-	asm(" nop");
+/* 1.4. wait 128 cycles to permit initialization of end logic */
+	udelay(2);
+	/* for PCLK = 133MHz => 1 us is enough, 2 to allow lower frequency */
+
+	if (INTERACTIVE(STEP_DDR_RESET))
+		goto start;
 
 /* 1.5. initialize registers ddr_umctl2 */
 	/* Stop uMCTL2 before PHY is ready */
@@ -414,6 +872,17 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 	      (u32)&priv->ctl->dfimisc, readl(&priv->ctl->dfimisc));
 
 	set_reg(priv, REG_REG, &config->c_reg);
+
+	/* DDR3 = don't set DLLOFF for init mode */
+	if ((config->c_reg.mstr &
+	     (DDRCTRL_MSTR_DDR3 | DDRCTRL_MSTR_DLL_OFF_MODE))
+	    == (DDRCTRL_MSTR_DDR3 | DDRCTRL_MSTR_DLL_OFF_MODE)) {
+		debug("deactivate DLL OFF in mstr\n");
+		clrbits_le32(&priv->ctl->mstr, DDRCTRL_MSTR_DLL_OFF_MODE);
+		debug("[0x%08x] mstr = 0x%08x\n",
+		      (u32)&priv->ctl->mstr,  readl(&priv->ctl->mstr));
+	}
+
 	set_reg(priv, REG_TIMING, &config->c_timing);
 	set_reg(priv, REG_MAP, &config->c_map);
 
@@ -421,8 +890,13 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 	clrsetbits_le32(&priv->ctl->init0,
 			DDRCTRL_INIT0_SKIP_DRAM_INIT_MASK,
 			DDRCTRL_INIT0_SKIP_DRAM_INIT_NORMAL);
+	debug("[0x%08x] init0 = 0x%08x\n",
+	      (u32)&priv->ctl->init0, readl(&priv->ctl->init0));
 
 	set_reg(priv, REG_PERF, &config->c_perf);
+
+	if (INTERACTIVE(STEP_CTL_INIT))
+		goto start;
 
 /*  2. deassert reset signal core_ddrc_rstn, aresetn and presetn */
 	clrbits_le32(priv->rcc + RCC_DDRITFCR, RCC_DDRITFCR_DDRCORERST);
@@ -436,6 +910,19 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 	set_reg(priv, REGPHY_TIMING, &config->p_timing);
 	set_reg(priv, REGPHY_CAL, &config->p_cal);
 
+	/* DDR3 = don't set DLLOFF for init mode */
+	if ((config->c_reg.mstr &
+	     (DDRCTRL_MSTR_DDR3 | DDRCTRL_MSTR_DLL_OFF_MODE))
+	    == (DDRCTRL_MSTR_DDR3 | DDRCTRL_MSTR_DLL_OFF_MODE)) {
+		debug("deactivate DLL OFF in mr1\n");
+		clrbits_le32(&priv->phy->mr1, BIT(0));
+		debug("[0x%08x] mr1 = 0x%08x\n",
+		      (u32)&priv->phy->mr1,  readl(&priv->phy->mr1));
+	}
+
+	if (INTERACTIVE(STEP_PHY_INIT))
+		goto start;
+
 /*  4. Monitor PHY init status by polling PUBL register PGSR.IDONE
  *     Perform DDR PHY DRAM initialization and Gate Training Evaluation
  */
@@ -445,6 +932,7 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
  *     by setting PIR.INIT and PIR CTLDINIT and pool PGSR.IDONE
  *     DRAM init is done by PHY, init0.skip_dram.init = 1
  */
+
 	pir = DDRPHYC_PIR_DLLSRST | DDRPHYC_PIR_DLLLOCK | DDRPHYC_PIR_ZCAL |
 	      DDRPHYC_PIR_ITMSRST | DDRPHYC_PIR_DRAMINIT | DDRPHYC_PIR_ICPC;
 
@@ -456,7 +944,12 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 /*  6. SET DFIMISC.dfi_init_complete_en to 1 */
 	/* Enable quasi-dynamic register programming*/
 	start_sw_done(priv->ctl);
+
 	setbits_le32(&priv->ctl->dfimisc, DDRCTRL_DFIMISC_DFI_INIT_COMPLETE_EN);
+	debug("[0x%08x] dfimisc = 0x%08x\n",
+	      (u32)&priv->ctl->dfimisc,
+	      readl(&priv->ctl->dfimisc));
+
 	wait_sw_done_ack(priv->ctl);
 
 /*  7. Wait for DWC_ddr_umctl2 to move to normal operation mode
@@ -465,6 +958,10 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 	/* wait uMCTL2 ready */
 
 	wait_operating_mode(priv, DDRCTRL_STAT_OPERATING_MODE_NORMAL);
+
+	/* switch to DLL OFF mode */
+	if (config->c_reg.mstr & DDRCTRL_MSTR_DLL_OFF_MODE)
+		ddr3_dll_off(priv);
 
 	debug("DDR DQS training : ");
 /*  8. Disable Auto refresh and power down by setting
@@ -492,4 +989,7 @@ void stm32mp1_ddr_init(struct ddr_info *priv,
 	/* enable uMCTL2 AXI port 0 and 1 */
 	setbits_le32(&priv->ctl->pctrl_0, DDRCTRL_PCTRL_N_PORT_EN);
 	setbits_le32(&priv->ctl->pctrl_1, DDRCTRL_PCTRL_N_PORT_EN);
+
+	if (INTERACTIVE(STEP_DDR_READY))
+		goto start;
 }

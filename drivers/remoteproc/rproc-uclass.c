@@ -5,6 +5,7 @@
  */
 #define pr_fmt(fmt) "%s: " fmt, __func__
 #include <common.h>
+#include <elf.h>
 #include <errno.h>
 #include <fdtdec.h>
 #include <malloc.h>
@@ -16,6 +17,40 @@
 #include <dm/uclass-internal.h>
 
 DECLARE_GLOBAL_DATA_PTR;
+
+/**
+ * struct resource_table - firmware resource table header
+ * @ver: version number
+ * @num: number of resource entries
+ * @reserved: reserved (must be zero)
+ * @offset: array of offsets pointing at the various resource entries
+ *
+ * A resource table is essentially a list of system resources required
+ * by the remote processor. It may also include configuration entries.
+ * If needed, the remote processor firmware should contain this table
+ * as a dedicated ".resource_table" ELF section.
+ *
+ * Some resources entries are mere announcements, where the host is informed
+ * of specific remoteproc configuration. Other entries require the host to
+ * do something (e.g. allocate a system resource). Sometimes a negotiation
+ * is expected, where the firmware requests a resource, and once allocated,
+ * the host should provide back its details (e.g. address of an allocated
+ * memory region).
+ *
+ * The header of the resource table, as expressed by this structure,
+ * contains a version number (should we need to change this format in the
+ * future), the number of available resource entries, and their offsets
+ * in the table.
+ *
+ * Immediately following this header are the resource entries themselves,
+ * each of which begins with a resource entry header (as described below).
+ */
+struct resource_table {
+	u32 ver;
+	u32 num;
+	u32 reserved[2];
+	u32 offset[0];
+} __packed;
 
 /**
  * for_each_remoteproc_device() - iterate through the list of rproc devices
@@ -291,11 +326,252 @@ int rproc_dev_init(int id)
 	return ret;
 }
 
+/*
+ * Determine if a valid ELF image exists at the given memory location.
+ * First look at the ELF header magic field, then make sure that it is
+ * executable.
+ */
+static bool is_valid_elf_image(unsigned long addr, int size)
+{
+	Elf32_Ehdr *ehdr; /* Elf header structure pointer */
+
+	ehdr = (Elf32_Ehdr *)addr;
+
+	if (!IS_ELF(*ehdr) || size <= sizeof(Elf32_Ehdr)) {
+		pr_err("No elf image at address 0x%08lx\n", addr);
+		return false;
+	}
+
+	if (ehdr->e_type != ET_EXEC) {
+		pr_err("Not a 32-bit elf image at address 0x%08lx\n", addr);
+		return false;
+	}
+
+	return true;
+}
+
+
+/* Basic function to verify ELF image format */
+static int
+rproc_elf_sanity_check(struct udevice *dev, ulong addr, ulong size)
+{
+	Elf32_Ehdr *ehdr;
+	char class;
+
+	if (!addr) {
+		dev_err(dev, "Invalid fw address?\n");
+		return -EINVAL;
+	}
+
+	if (size < sizeof(Elf32_Ehdr)) {
+		dev_err(dev, "Image is too small\n");
+		return -EINVAL;
+	}
+
+	ehdr = (Elf32_Ehdr *)addr;
+
+	/* We only support ELF32 at this point */
+	class = ehdr->e_ident[EI_CLASS];
+	if (class != ELFCLASS32) {
+		dev_err(dev, "Unsupported class: %d\n", class);
+		return -EINVAL;
+	}
+
+	/* We assume the firmware has the same endianness as the host */
+# ifdef __LITTLE_ENDIAN
+	if (ehdr->e_ident[EI_DATA] != ELFDATA2LSB) {
+# else /* BIG ENDIAN */
+	if (ehdr->e_ident[EI_DATA] != ELFDATA2MSB) {
+# endif
+		dev_err(dev, "Unsupported firmware endianness\n");
+		return -EINVAL;
+	}
+
+	if (size < ehdr->e_shoff + sizeof(Elf32_Shdr)) {
+		dev_err(dev, "Image is too small\n");
+		return -EINVAL;
+	}
+
+	if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG)) {
+		dev_err(dev, "Image is corrupted (bad magic)\n");
+		return -EINVAL;
+	}
+
+	if (ehdr->e_phnum == 0) {
+		dev_err(dev, "No loadable segments\n");
+		return -EINVAL;
+	}
+
+	if (ehdr->e_phoff > size) {
+		dev_err(dev, "Firmware size is too small\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/*
+ * A very simple elf loader, assumes the image is valid, returns the
+ * entry point address.
+ */
+static int rproc_load_elf_image(struct udevice *dev, unsigned long addr,
+				unsigned long *entry)
+{
+	Elf32_Ehdr *ehdr; /* Elf header structure pointer */
+	Elf32_Phdr *phdr; /* Program header structure pointer */
+	const struct dm_rproc_ops *ops;
+	unsigned int i;
+
+	ehdr = (Elf32_Ehdr *)addr;
+	phdr = (Elf32_Phdr *)(addr + ehdr->e_phoff);
+
+	ops = rproc_get_ops(dev);
+	if (!ops) {
+		dev_dbg(dev, "Driver has no ops?\n");
+		return -EINVAL;
+	}
+
+	/* Load each program header */
+	for (i = 0; i < ehdr->e_phnum; ++i) {
+		void *dst = (void *)(uintptr_t)phdr->p_paddr;
+		void *src = (void *)addr + phdr->p_offset;
+
+		if (phdr->p_type != PT_LOAD)
+			continue;
+
+		if (ops->da_to_pa)
+			dst = (void *)ops->da_to_pa(dev, (ulong)dst);
+
+		dev_dbg(dev, "Loading phdr %i to 0x%p (%i bytes)\n",
+			i, dst, phdr->p_filesz);
+		if (phdr->p_filesz)
+			memcpy(dst, src, phdr->p_filesz);
+		if (phdr->p_filesz != phdr->p_memsz)
+			memset(dst + phdr->p_filesz, 0x00,
+			       phdr->p_memsz - phdr->p_filesz);
+		flush_cache((unsigned long)dst, phdr->p_filesz);
+		++phdr;
+	}
+
+	*entry = ehdr->e_entry;
+
+	return 0;
+}
+
+/* Helper to find resource table in an ELF image */
+static Elf32_Shdr *find_rsc_table(struct udevice *dev, Elf32_Ehdr *ehdr,
+				  size_t fw_size)
+{
+	Elf32_Shdr *shdr;
+	int i;
+	const char *name_table;
+	struct resource_table *table = NULL;
+	const u8 *elf_data = (void *)ehdr;
+
+	/* look for the resource table and handle it */
+	shdr = (Elf32_Shdr *)(elf_data + ehdr->e_shoff);
+	name_table = (const char *)(elf_data +
+				    shdr[ehdr->e_shstrndx].sh_offset);
+
+	for (i = 0; i < ehdr->e_shnum; i++, shdr++) {
+		u32 size = shdr->sh_size;
+		u32 offset = shdr->sh_offset;
+
+		if (strcmp(name_table + shdr->sh_name, ".resource_table"))
+			continue;
+
+		table = (struct resource_table *)(elf_data + offset);
+
+		/* make sure we have the entire table */
+		if (offset + size > fw_size || offset + size < size) {
+			dev_err(dev, "resource table truncated\n");
+			return NULL;
+		}
+
+		/* make sure table has at least the header */
+		if (sizeof(struct resource_table) > size) {
+			dev_err(dev, "header-less resource table\n");
+			return NULL;
+		}
+
+		/* we don't support any version beyond the first */
+		if (table->ver != 1) {
+			dev_err(dev, "unsupported fw ver: %d\n", table->ver);
+			return NULL;
+		}
+
+		/* make sure reserved bytes are zeroes */
+		if (table->reserved[0] || table->reserved[1]) {
+			dev_err(dev, "non zero reserved bytes\n");
+			return NULL;
+		}
+
+		/* make sure the offsets array isn't truncated */
+		if (table->num * sizeof(table->offset[0]) +
+				sizeof(struct resource_table) > size) {
+			dev_err(dev, "resource table incomplete\n");
+			return NULL;
+		}
+
+		return shdr;
+	}
+
+	return NULL;
+}
+
+/**
+ * rproc_elf_find_load_rsc_table() - find the loaded resource table
+ * @dev: the rproc device
+ * @fw_addr: the ELF firmware image address
+ * @fw_size: the ELF firmware image size
+ * @rsc_addr: resource table address
+ * @rsc_size: resource table size
+ *
+ * This function finds the resource table, load it and return its address.
+ *
+ * Return: 0 if all ok, else appropriate error value.
+ */
+static int rproc_elf_find_load_rsc_table(struct udevice *dev,
+					 ulong fw_addr, ulong fw_size,
+					 ulong *rsc_addr,
+					 unsigned int *rsc_size)
+{
+	const struct dm_rproc_ops *ops;
+	Elf32_Ehdr *ehdr = (Elf32_Ehdr *)fw_addr;
+	Elf32_Shdr *shdr;
+	void *src;
+	void *dst;
+
+	shdr = find_rsc_table(dev, ehdr, fw_size);
+	if (!shdr)
+		return -ENODATA;
+
+	*rsc_addr = (ulong)shdr->sh_addr;
+	*rsc_size = (unsigned int)shdr->sh_size;
+
+	ops = rproc_get_ops(dev);
+	if (ops->da_to_pa)
+		dst = (void *)ops->da_to_pa(dev, (ulong)shdr->sh_addr);
+	else
+		dst = (void *)shdr->sh_addr;
+
+	dev_dbg(dev, "Loading resource table to 0x%8lx (%i bytes)\n",
+		(ulong)dst, shdr->sh_size);
+
+	src = (void *)fw_addr + shdr->sh_offset;
+
+	memcpy(dst, src, shdr->sh_size);
+	flush_cache((unsigned long)dst, shdr->sh_size);
+
+	return 0;
+}
+
 int rproc_load(int id, ulong addr, ulong size)
 {
 	struct udevice *dev = NULL;
 	struct dm_rproc_uclass_pdata *uc_pdata;
 	const struct dm_rproc_ops *ops;
+	unsigned long entry;
 	int ret;
 
 	ret = uclass_get_device_by_seq(UCLASS_REMOTEPROC, id, &dev);
@@ -315,13 +591,66 @@ int rproc_load(int id, ulong addr, ulong size)
 
 	debug("Loading to '%s' from address 0x%08lX size of %lu bytes\n",
 	      uc_pdata->name, addr, size);
-	if (ops->load)
-		return ops->load(dev, addr, size);
+
+	if (is_valid_elf_image(addr, size)) {
+		if (rproc_elf_sanity_check(dev, addr, size))
+			return -EINVAL;
+
+		/* Elf file load */
+		if (ops->reset)
+			ops->reset(dev);
+
+		return rproc_load_elf_image(dev, addr, &entry);
+
+	} else {
+		/* Binary file load */
+		if (ops->load)
+			return ops->load(dev, addr, size);
+	}
 
 	debug("%s: data corruption?? mandatory function is missing!\n",
 	      dev->name);
 
 	return -EINVAL;
+};
+
+int rproc_load_rsc_table(int id, ulong addr, ulong size, ulong *rsc_addr,
+			 unsigned int *rsc_size)
+{
+	struct udevice *dev = NULL;
+	const struct dm_rproc_ops *ops;
+	int ret;
+
+	ret = uclass_get_device_by_seq(UCLASS_REMOTEPROC, id, &dev);
+	if (ret) {
+		debug("Unknown remote processor id '%d' requested(%d)\n",
+		      id, ret);
+		return -EINVAL;
+	}
+
+	ops = rproc_get_ops(dev);
+	if (!ops) {
+		dev_dbg(dev, "Driver has no ops?\n");
+		return -EINVAL;
+	}
+
+	dev_dbg(dev, "Loocking for resource table from address 0x%08lX size of %lu bytes\n",
+		addr, size);
+
+	if (!rproc_elf_sanity_check(dev, addr, size)) {
+		/* load elf image */
+		ret = rproc_elf_find_load_rsc_table(dev, addr, size, rsc_addr,
+						    rsc_size);
+		if (ret) {
+			dev_dbg(dev, "No resource table found\n");
+			return -ENODATA;
+		}
+		dev_dbg(dev, "Resource table at 0x%08lx, size 0x%x!\n",
+			*rsc_addr, *rsc_size);
+		return 0;
+	}
+
+	return -ENODATA;
 };
 
 /*

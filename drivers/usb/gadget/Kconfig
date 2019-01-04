@@ -72,6 +72,15 @@ config USB_GADGET_BCM_UDC_OTG_PHY
 	help
 	  Enable the Broadcom UDC OTG physical device interface.
 
+config USB_GADGET_GEN_UDC_OTG_PHY
+	bool "Generic UDC OTG PHY"
+	depends on PHY && USB_GADGET_DWC2_OTG
+	default y if ARCH_STM32MP
+	help
+	  Enable the generic UDC OTG physical device interface.
+	  it is based on the generic phy driver API on the phy
+	  u-class and on the device tree information
+
 config USB_GADGET_DWC2_OTG
 	bool "DesignWare USB2.0 HS OTG controller (gadget mode)"
 	select USB_GADGET_DUALSPEED

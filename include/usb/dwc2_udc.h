@@ -19,6 +19,7 @@ struct dwc2_plat_otg_data {
 	unsigned int    usb_phy_ctrl;
 	unsigned int    usb_flags;
 	unsigned int	usb_gusbcfg;
+	unsigned int	usb_gotgctl;
 	unsigned int	rx_fifo_sz;
 	unsigned int	np_tx_fifo_sz;
 	unsigned int	tx_fifo_sz;

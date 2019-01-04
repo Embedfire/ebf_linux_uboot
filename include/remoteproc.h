@@ -63,6 +63,8 @@ struct dm_rproc_uclass_pdata {
  *		Return 0 on success, 1 if not running, -ve on others errors
  * @ping:	Ping the remote device for basic communication check(optional)
  *		Return 0 on success, 1 if not responding, -ve on other errors
+ * @da_to_pa:   Return translated physical address (device address different
+ *              from physical address)
  */
 struct dm_rproc_ops {
 	int (*init)(struct udevice *dev);
@@ -72,6 +74,7 @@ struct dm_rproc_ops {
 	int (*reset)(struct udevice *dev);
 	int (*is_running)(struct udevice *dev);
 	int (*ping)(struct udevice *dev);
+	ulong (*da_to_pa)(struct udevice *dev, ulong da);
 };
 
 /* Accessor */
@@ -101,7 +104,7 @@ int rproc_dev_init(int id);
 bool rproc_is_initialized(void);
 
 /**
- * rproc_load() - load binary to a remote processor
+ * rproc_load() - load binary or elf to a remote processor
  * @id:		id of the remote processor
  * @addr:	address in memory where the binary image is located
  * @size:	size of the binary image
@@ -109,6 +112,19 @@ bool rproc_is_initialized(void);
  * Return: 0 if all ok, else appropriate error value.
  */
 int rproc_load(int id, ulong addr, ulong size);
+
+/**
+ * rproc_get_rsc_table() - get resource table address from elf image
+ * @id:		id of the remote processor
+ * @addr:	address in memory where the image is located
+ * @size:	size of the image
+ * @rsc_addr:	resource table address (device address)
+ * @rsc_size:   resource table size
+ *
+ * Return: 0 if all ok, else appropriate error value.
+ */
+int rproc_load_rsc_table(int id, ulong addr, ulong size, ulong *rsc_addr,
+			 unsigned int *rsc_size);
 
 /**
  * rproc_start() - Start a remote processor
@@ -166,6 +182,8 @@ static inline int rproc_stop(int id) { return -ENOSYS; }
 static inline int rproc_reset(int id) { return -ENOSYS; }
 static inline int rproc_ping(int id) { return -ENOSYS; }
 static inline int rproc_is_running(int id) { return -ENOSYS; }
+static int rproc_load_rsc_table(int id, ulong addr, ulong size, ulong *rsc_addr,
+				unsigned int *rsc_size) { return -ENOSYS; }
 #endif
 
 #endif	/* _RPROC_H_ */

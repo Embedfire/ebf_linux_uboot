@@ -46,5 +46,10 @@ config DFU_SF
 	  This option enables using DFU to read and write to SPI flash based
 	  storage.
 
+config DFU_VIRT
+	bool "Virtual back end for DFU"
+	help
+	  This option enables using DFU to read and write to virtual partition.
+
 endif
 endmenu

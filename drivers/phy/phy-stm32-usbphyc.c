@@ -37,7 +37,8 @@
 
 #define MAX_PHYS		2
 
-#define PLL_LOCK_TIME_US	100
+/* max 100 us for PLL lock and 100 us for PHY init */
+#define PLL_INIT_TIME_US	200
 #define PLL_PWR_DOWN_TIME_US	5
 #define PLL_FVCO		2880	 /* in MHz */
 #define PLL_INFF_MIN_RATE	19200000 /* in Hz */
@@ -51,13 +52,11 @@ struct pll_params {
 struct stm32_usbphyc {
 	fdt_addr_t base;
 	struct clk clk;
+	struct udevice *vdda1v1;
+	struct udevice *vdda1v8;
+	struct udevice *vdd3v3;
 	struct stm32_usbphyc_phy {
-		struct udevice *vdd;
-		struct udevice *vdda1v1;
-		struct udevice *vdda1v8;
-		int index;
 		bool init;
-		bool powered;
 	} phys[MAX_PHYS];
 };
 
@@ -129,18 +128,6 @@ static bool stm32_usbphyc_is_init(struct stm32_usbphyc *usbphyc)
 	return false;
 }
 
-static bool stm32_usbphyc_is_powered(struct stm32_usbphyc *usbphyc)
-{
-	int i;
-
-	for (i = 0; i < MAX_PHYS; i++) {
-		if (usbphyc->phys[i].powered)
-			return true;
-	}
-
-	return false;
-}
-
 static int stm32_usbphyc_phy_init(struct phy *phy)
 {
 	struct stm32_usbphyc *usbphyc = dev_get_priv(phy->dev);
@@ -154,6 +141,24 @@ static int stm32_usbphyc_phy_init(struct phy *phy)
 	if (pllen && stm32_usbphyc_is_init(usbphyc))
 		goto initialized;
 
+	if (usbphyc->vdda1v1) {
+		ret = regulator_set_enable(usbphyc->vdda1v1, true);
+		if (ret)
+			return ret;
+	}
+
+	if (usbphyc->vdda1v8) {
+		ret = regulator_set_enable(usbphyc->vdda1v8, true);
+		if (ret)
+			return ret;
+	}
+
+	if (usbphyc->vdd3v3) {
+		ret = regulator_set_enable(usbphyc->vdd3v3, true);
+		if (ret)
+			return ret;
+	}
+
 	if (pllen) {
 		clrbits_le32(usbphyc->base + STM32_USBPHYC_PLL, PLLEN);
 		udelay(PLL_PWR_DOWN_TIME_US);
@@ -165,11 +170,8 @@ static int stm32_usbphyc_phy_init(struct phy *phy)
 
 	setbits_le32(usbphyc->base + STM32_USBPHYC_PLL, PLLEN);
 
-	/*
-	 * We must wait PLL_LOCK_TIME_US before checking that PLLEN
-	 * bit is still set
-	 */
-	udelay(PLL_LOCK_TIME_US);
+	/* We must wait PLL_INIT_TIME_US before using PHY */
+	udelay(PLL_INIT_TIME_US);
 
 	if (!(readl(usbphyc->base + STM32_USBPHYC_PLL) & PLLEN))
 		return -EIO;
@@ -184,6 +186,7 @@ static int stm32_usbphyc_phy_exit(struct phy *phy)
 {
 	struct stm32_usbphyc *usbphyc = dev_get_priv(phy->dev);
 	struct stm32_usbphyc_phy *usbphyc_phy = usbphyc->phys + phy->id;
+	int ret;
 
 	pr_debug("%s phy ID = %lu\n", __func__, phy->id);
 	usbphyc_phy->init = false;
@@ -202,94 +205,22 @@ static int stm32_usbphyc_phy_exit(struct phy *phy)
 
 	if (readl(usbphyc->base + STM32_USBPHYC_PLL) & PLLEN)
 		return -EIO;
-
-	return 0;
-}
-
-static int stm32_usbphyc_phy_power_on(struct phy *phy)
-{
-	struct stm32_usbphyc *usbphyc = dev_get_priv(phy->dev);
-	struct stm32_usbphyc_phy *usbphyc_phy = usbphyc->phys + phy->id;
-	int ret;
-
-	pr_debug("%s phy ID = %lu\n", __func__, phy->id);
-	if (usbphyc_phy->vdda1v1) {
-		ret = regulator_set_enable(usbphyc_phy->vdda1v1, true);
+	if (usbphyc->vdda1v1) {
+		ret = regulator_set_enable(usbphyc->vdda1v1, false);
 		if (ret)
 			return ret;
 	}
 
-	if (usbphyc_phy->vdda1v8) {
-		ret = regulator_set_enable(usbphyc_phy->vdda1v8, true);
-		if (ret)
-			return ret;
-	}
-	if (usbphyc_phy->vdd) {
-		ret = regulator_set_enable(usbphyc_phy->vdd, true);
+	if (usbphyc->vdda1v8) {
+		ret = regulator_set_enable(usbphyc->vdda1v8, false);
 		if (ret)
 			return ret;
 	}
 
-	usbphyc_phy->powered = true;
-
-	return 0;
-}
-
-static int stm32_usbphyc_phy_power_off(struct phy *phy)
-{
-	struct stm32_usbphyc *usbphyc = dev_get_priv(phy->dev);
-	struct stm32_usbphyc_phy *usbphyc_phy = usbphyc->phys + phy->id;
-	int ret;
-
-	pr_debug("%s phy ID = %lu\n", __func__, phy->id);
-	usbphyc_phy->powered = false;
-
-	if (stm32_usbphyc_is_powered(usbphyc))
-		return 0;
-
-	if (usbphyc_phy->vdda1v1) {
-		ret = regulator_set_enable(usbphyc_phy->vdda1v1, false);
+	if (usbphyc->vdd3v3) {
+		ret = regulator_set_enable(usbphyc->vdd3v3, false);
 		if (ret)
 			return ret;
-	}
-
-	if (usbphyc_phy->vdda1v8) {
-		ret = regulator_set_enable(usbphyc_phy->vdda1v8, false);
-		if (ret)
-			return ret;
-	}
-
-	if (usbphyc_phy->vdd) {
-		ret = regulator_set_enable(usbphyc_phy->vdd, false);
-		if (ret)
-			return ret;
-	}
-
-	return 0;
-}
-
-static int stm32_usbphyc_get_regulator(struct udevice *dev, ofnode node,
-				       char *supply_name,
-				       struct udevice **regulator)
-{
-	struct ofnode_phandle_args regulator_phandle;
-	int ret;
-
-	ret = ofnode_parse_phandle_with_args(node, supply_name,
-					     NULL, 0, 0,
-					     &regulator_phandle);
-	if (ret) {
-		dev_err(dev, "Can't find %s property (%d)\n", supply_name, ret);
-		return ret;
-	}
-
-	ret = uclass_get_device_by_ofnode(UCLASS_REGULATOR,
-					  regulator_phandle.node,
-					  regulator);
-
-	if (ret) {
-		dev_err(dev, "Can't get %s regulator (%d)\n", supply_name, ret);
-		return ret;
 	}
 
 	return 0;
@@ -298,19 +229,20 @@ static int stm32_usbphyc_get_regulator(struct udevice *dev, ofnode node,
 static int stm32_usbphyc_of_xlate(struct phy *phy,
 				  struct ofnode_phandle_args *args)
 {
-	if (args->args_count > 1) {
-		pr_debug("%s: invalid args_count: %d\n", __func__,
-			 args->args_count);
-		return -EINVAL;
-	}
+	if (args->args_count < 1)
+		return -ENODEV;
 
 	if (args->args[0] >= MAX_PHYS)
 		return -ENODEV;
 
-	if (args->args_count)
-		phy->id = args->args[0];
-	else
-		phy->id = 0;
+	phy->id = args->args[0];
+
+	if ((phy->id == 0 && args->args_count != 1) ||
+	    (phy->id == 1 && args->args_count != 2)) {
+		dev_err(dev, "invalid number of cells for phy port%ld\n",
+			phy->id);
+		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -318,8 +250,6 @@ static int stm32_usbphyc_of_xlate(struct phy *phy,
 static const struct phy_ops stm32_usbphyc_phy_ops = {
 	.init = stm32_usbphyc_phy_init,
 	.exit = stm32_usbphyc_phy_exit,
-	.power_on = stm32_usbphyc_phy_power_on,
-	.power_off = stm32_usbphyc_phy_power_off,
 	.of_xlate = stm32_usbphyc_of_xlate,
 };
 
@@ -327,7 +257,6 @@ static int stm32_usbphyc_probe(struct udevice *dev)
 {
 	struct stm32_usbphyc *usbphyc = dev_get_priv(dev);
 	struct reset_ctl reset;
-	ofnode node;
 	int i, ret;
 
 	usbphyc->base = dev_read_addr(dev);
@@ -351,34 +280,30 @@ static int stm32_usbphyc_probe(struct udevice *dev)
 		reset_deassert(&reset);
 	}
 
-	/*
-	 * parse all PHY subnodes in order to populate regulator associated
-	 * to each PHY port
-	 */
-	node = dev_read_first_subnode(dev);
-	for (i = 0; i < MAX_PHYS; i++) {
-		struct stm32_usbphyc_phy *usbphyc_phy = usbphyc->phys + i;
-
-		usbphyc_phy->index = i;
-		usbphyc_phy->init = false;
-		usbphyc_phy->powered = false;
-		ret = stm32_usbphyc_get_regulator(dev, node, "phy-supply",
-						  &usbphyc_phy->vdd);
-		if (ret)
-			return ret;
-
-		ret = stm32_usbphyc_get_regulator(dev, node, "vdda1v1-supply",
-						  &usbphyc_phy->vdda1v1);
-		if (ret)
-			return ret;
-
-		ret = stm32_usbphyc_get_regulator(dev, node, "vdda1v8-supply",
-						  &usbphyc_phy->vdda1v8);
-		if (ret)
-			return ret;
-
-		node = dev_read_next_subnode(node);
+	/* get usbphyc regulator */
+	ret = device_get_supply_regulator(dev, "vdda1v1-supply",
+					  &usbphyc->vdda1v1);
+	if (ret) {
+		dev_err(dev, "Can't get vdda1v1-supply regulator\n");
+		return ret;
 	}
+
+	ret = device_get_supply_regulator(dev, "vdda1v8-supply",
+					  &usbphyc->vdda1v8);
+	if (ret) {
+		dev_err(dev, "Can't get vdda1v8-supply regulator\n");
+		return ret;
+	}
+
+	ret = device_get_supply_regulator(dev, "vdd3v3-supply",
+					  &usbphyc->vdd3v3);
+	if (ret) {
+		dev_err(dev, "Can't get vdd3v3-supply regulator\n");
+		return ret;
+	}
+
+	for (i = 0; i < MAX_PHYS; i++)
+		usbphyc->phys[i].init = false;
 
 	/* Check if second port has to be used for host controller */
 	if (dev_read_bool(dev, "st,port2-switch-to-host"))

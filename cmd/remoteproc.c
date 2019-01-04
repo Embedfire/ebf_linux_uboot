@@ -103,7 +103,7 @@ static int do_remoteproc_list(cmd_tbl_t *cmdtp, int flag, int argc,
 }
 
 /**
- * do_remoteproc_load() - Load a remote processor with binary image
+ * do_remoteproc_load() - Load a remote processor with binary or elf image
  * @cmdtp:	unused
  * @flag:	unused
  * @argc:	argument count for the load function
@@ -143,6 +143,53 @@ static int do_remoteproc_load(cmd_tbl_t *cmdtp, int flag, int argc,
 }
 
 /**
+ * do_remoteproc_load_rsc_table() - Get resource table from an elf image
+ * @cmdtp:	unused
+ * @flag:	unused
+ * @argc:	argument count for the load function
+ * @argv:	arguments for the load function
+ *
+ * Return: 0 if no error, else returns appropriate error value.
+ */
+static int do_remoteproc_load_rsc_table(cmd_tbl_t *cmdtp, int flag, int argc,
+					char *const argv[])
+{
+	ulong addr, size, rsc_addr;
+	unsigned int rsc_size;
+	int id, ret;
+
+	if (argc != 4)
+		return CMD_RET_USAGE;
+
+	id = (int)simple_strtoul(argv[1], NULL, 3);
+	addr = simple_strtoul(argv[2], NULL, 16);
+
+	size = simple_strtoul(argv[3], NULL, 16);
+
+	if (!size) {
+		printf("\t Expect some size??\n");
+		return CMD_RET_USAGE;
+	}
+
+	if (!rproc_is_initialized()) {
+		printf("\tRemote Processors are not initialized\n");
+		return CMD_RET_USAGE;
+	}
+
+	ret = rproc_load_rsc_table(id, addr, size, &rsc_addr, &rsc_size);
+	if (!ret) {
+		env_set_hex("copro_rsc_addr", rsc_addr);
+		env_set_hex("copro_rsc_size", rsc_size);
+	}
+
+	printf("Remote Processor %d resource table %s : 0x%08lx-0x%x\n",
+	       id, ret ? "Not found" : "Found", ret ? 0 : rsc_addr,
+	       ret ? 0 : rsc_size);
+
+	return ret ? CMD_RET_FAILURE : 0;
+}
+
+/**
  * do_remoteproc_wrapper() - wrapper for various  rproc commands
  * @cmdtp:	unused
  * @flag:	unused
@@ -172,6 +219,9 @@ static int do_remoteproc_wrapper(cmd_tbl_t *cmdtp, int flag, int argc,
 
 	if (!strcmp(argv[0], "start")) {
 		ret = rproc_start(id);
+		if (!ret)
+			env_set("copro_state", "booted");
+
 	} else if (!strcmp(argv[0], "stop")) {
 		ret = rproc_stop(id);
 	} else if (!strcmp(argv[0], "reset")) {
@@ -213,6 +263,12 @@ static cmd_tbl_t cmd_remoteproc_sub[] = {
 			 "- id: ID of the remote processor(see 'list' cmd)\n"
 			 "- addr: Address in memory of the image to loadup\n"
 			 "- size: Size of the image to loadup\n"),
+	U_BOOT_CMD_MKENT(load_rsc, 5, 1, do_remoteproc_load_rsc_table,
+			 "Load resource table address from remote processor provided image",
+			 "<id> [addr] [size]\n"
+			 "- id: ID of the remote processor(see 'list' cmd)\n"
+			 "- addr: Address in memory of the image\n"
+			 "- size: Size of the image\n"),
 	U_BOOT_CMD_MKENT(start, 1, 1, do_remoteproc_wrapper,
 			 "Start remote processor",
 			 "id - ID of the remote processor (see 'list' cmd)\n"),
@@ -272,8 +328,10 @@ U_BOOT_CMD(rproc, 5, 1, do_remoteproc,
 	   "\n\tSubcommands:\n"
 	   "\tinit   - Enumerate and initalize the remote processors\n"
 	   "\tlist   - list available remote processors\n"
-	   "\tload <id> [addr] [size]- Load the remote processor with binary\n"
+	   "\tload <id> [addr] [size]- Load the remote processor with\n"
 	   "\t		  image stored at address [addr] in memory\n"
+	   "\tload_rsc <id> [addr] [size]- Load resource table from remote\n"
+	   "\t		  processor provided image at address [addr]\n"
 	   "\tstart <id>	- Start the remote processor(must be loaded)\n"
 	   "\tstop <id>	- Stop the remote processor\n"
 	   "\treset <id>	- Reset the remote processor\n"

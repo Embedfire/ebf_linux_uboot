@@ -12,6 +12,8 @@
 #include <asm/io.h>
 #include "stm32mp1_ddr.h"
 
+DECLARE_GLOBAL_DATA_PTR;
+
 static const char *const clkname[] = {
 	"ddrc1",
 	"ddrc2",
@@ -20,7 +22,7 @@ static const char *const clkname[] = {
 	"ddrphyc" /* LAST clock => used for get_rate() */
 };
 
-int stm32mp1_ddr_clk_enable(struct ddr_info *priv, uint16_t mem_speed)
+int stm32mp1_ddr_clk_enable(struct ddr_info *priv, uint32_t mem_speed)
 {
 	unsigned long ddrphy_clk;
 	unsigned long ddr_clk;
@@ -43,16 +45,15 @@ int stm32mp1_ddr_clk_enable(struct ddr_info *priv, uint16_t mem_speed)
 	priv->clk = clk;
 	ddrphy_clk = clk_get_rate(&priv->clk);
 
-	debug("DDR: mem_speed (%d MHz), RCC %d MHz\n",
-	      mem_speed, (u32)(ddrphy_clk / 1000 / 1000));
+	debug("DDR: mem_speed (%d kHz), RCC %d kHz\n",
+	      mem_speed, (u32)(ddrphy_clk / 1000));
 	/* max 10% frequency delta */
-	ddr_clk = abs(ddrphy_clk - mem_speed * 1000 * 1000);
-	if (ddr_clk > (mem_speed * 1000 * 100)) {
-		pr_err("DDR expected freq %d MHz, current is %d MHz\n",
-		       mem_speed, (u32)(ddrphy_clk / 1000 / 1000));
-		return -EINVAL;
+	ddr_clk = abs(ddrphy_clk - mem_speed * 1000);
+	if (ddr_clk > (mem_speed * 100)) {
+		pr_err("DDR expected freq %d kHz, current is %d kHz\n",
+		       mem_speed, (u32)(ddrphy_clk / 1000));
+		return -1;
 	}
-
 	return 0;
 }
 
@@ -108,6 +109,7 @@ static __maybe_unused int stm32mp1_ddr_setup(struct udevice *dev)
 		}
 	}
 
+
 	ret = clk_get_by_name(dev, "axidcg", &axidcg);
 	if (ret) {
 		debug("%s: Cannot found axidcg\n", __func__);
@@ -141,7 +143,7 @@ static int stm32mp1_ddr_probe(struct udevice *dev)
 {
 	struct ddr_info *priv = dev_get_priv(dev);
 	struct regmap *map;
-	int ret;
+	int ret = 0;
 
 	debug("STM32MP1 DDR probe\n");
 	priv->dev = dev;
@@ -153,11 +155,17 @@ static int stm32mp1_ddr_probe(struct udevice *dev)
 	priv->ctl = regmap_get_range(map, 0);
 	priv->phy = regmap_get_range(map, 1);
 
+	map = syscon_get_regmap_by_driver_data(STM32MP_SYSCON_PWR);
+	if (IS_ERR(map))
+		return PTR_ERR(map);
+	priv->pwr = regmap_get_range(map, 0);
+
 	priv->rcc = STM32_RCC_BASE;
 
 	priv->info.base = STM32_DDR_BASE;
 
-#if !defined(CONFIG_SPL) || defined(CONFIG_SPL_BUILD)
+#if !defined(CONFIG_STM32MP1_TRUSTED) && \
+	(!defined(CONFIG_SPL) || defined(CONFIG_SPL_BUILD))
 	priv->info.size = 0;
 	return stm32mp1_ddr_setup(dev);
 #else

@@ -11,6 +11,13 @@
 #include <stm32_rcc.h>
 #include <asm/io.h>
 
+#ifdef CONFIG_STM32MP1_TRUSTED
+#include <asm/arch/stm32mp1_smc.h>
+
+#define RCC_APB5RST_BANK 0x62
+#define RCC_AHB5RST_BANK 0x64
+#endif /* CONFIG_STM32MP1_TRUSTED */
+
 /* reset clear offset for STM32MP RCC */
 #define RCC_CL 0x4
 
@@ -33,12 +40,23 @@ static int stm32_reset_assert(struct reset_ctl *reset_ctl)
 	struct stm32_reset_priv *priv = dev_get_priv(reset_ctl->dev);
 	int bank = (reset_ctl->id / BITS_PER_LONG) * 4;
 	int offset = reset_ctl->id % BITS_PER_LONG;
+#ifdef CONFIG_STM32MP1_TRUSTED
+	int rcc_bank = reset_ctl->id / BITS_PER_LONG;
+#endif /* CONFIG_STM32MP1_TRUSTED */
+
 	debug("%s: reset id = %ld bank = %d offset = %d)\n", __func__,
 	      reset_ctl->id, bank, offset);
 
 	if (dev_get_driver_data(reset_ctl->dev) == STM32MP1)
 		/* reset assert is done in rcc set register */
-		writel(BIT(offset), priv->base + bank);
+#ifdef CONFIG_STM32MP1_TRUSTED
+		if (rcc_bank == RCC_APB5RST_BANK ||
+		    rcc_bank == RCC_AHB5RST_BANK)
+			stm32_smc_exec(STM32_SMC_RCC, STM32_SMC_REG_WRITE,
+				       bank, BIT(offset));
+		else
+#endif /* CONFIG_STM32MP1_TRUSTED */
+			writel(BIT(offset), priv->base + bank);
 	else
 		setbits_le32(priv->base + bank, BIT(offset));
 
@@ -50,12 +68,23 @@ static int stm32_reset_deassert(struct reset_ctl *reset_ctl)
 	struct stm32_reset_priv *priv = dev_get_priv(reset_ctl->dev);
 	int bank = (reset_ctl->id / BITS_PER_LONG) * 4;
 	int offset = reset_ctl->id % BITS_PER_LONG;
+#ifdef CONFIG_STM32MP1_TRUSTED
+	int rcc_bank = reset_ctl->id / BITS_PER_LONG;
+#endif /* CONFIG_STM32MP1_TRUSTED */
+
 	debug("%s: reset id = %ld bank = %d offset = %d)\n", __func__,
 	      reset_ctl->id, bank, offset);
 
 	if (dev_get_driver_data(reset_ctl->dev) == STM32MP1)
 		/* reset deassert is done in rcc clr register */
-		writel(BIT(offset), priv->base + bank + RCC_CL);
+#ifdef CONFIG_STM32MP1_TRUSTED
+		if (rcc_bank == RCC_APB5RST_BANK ||
+		    rcc_bank == RCC_AHB5RST_BANK)
+			stm32_smc_exec(STM32_SMC_RCC, STM32_SMC_REG_WRITE,
+				       bank + RCC_CL, BIT(offset));
+		else
+#endif /* CONFIG_STM32MP1_TRUSTED */
+			writel(BIT(offset), priv->base + bank + RCC_CL);
 	else
 		clrbits_le32(priv->base + bank, BIT(offset));
 

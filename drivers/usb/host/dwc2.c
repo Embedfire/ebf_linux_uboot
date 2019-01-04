@@ -5,12 +5,15 @@
  */
 
 #include <common.h>
+#include <clk.h>
 #include <dm.h>
 #include <errno.h>
-#include <usb.h>
+#include <generic-phy.h>
 #include <malloc.h>
 #include <memalign.h>
 #include <phys2bus.h>
+#include <reset.h>
+#include <usb.h>
 #include <usbroothubdes.h>
 #include <wait_bit.h>
 #include <asm/io.h>
@@ -35,6 +38,7 @@ struct dwc2_priv {
 #ifdef CONFIG_DM_REGULATOR
 	struct udevice *vbus_supply;
 #endif
+	struct phy phy;
 #else
 	uint8_t *aligned_buffer;
 	uint8_t *status_buffer;
@@ -811,7 +815,7 @@ int wait_for_chhltd(struct dwc2_hc_regs *hc_regs, uint32_t *sub, u8 *toggle)
 	uint32_t hcint, hctsiz;
 
 	ret = wait_for_bit_le32(&hc_regs->hcint, DWC2_HCINT_CHHLTD, true,
-				2000, false);
+			   2000, false);
 	if (ret)
 		return ret;
 
@@ -1210,6 +1214,8 @@ static int dwc2_init_common(struct udevice *dev, struct dwc2_priv *priv)
 	if (readl(&regs->gintsts) & DWC2_GINTSTS_CURMODE_HOST)
 		mdelay(1000);
 
+	printf("USB DWC2\n");
+
 	return 0;
 }
 
@@ -1317,12 +1323,118 @@ static int dwc2_usb_ofdata_to_platdata(struct udevice *dev)
 	return 0;
 }
 
+static int dwc2_setup_phy(struct udevice *dev)
+{
+	struct dwc2_priv *priv = dev_get_priv(dev);
+	int ret;
+
+	ret = generic_phy_get_by_index(dev, 0, &priv->phy);
+	if (ret) {
+		if (ret != -ENOENT) {
+			dev_err(dev, "failed to get usb phy\n");
+			return ret;
+		}
+		return 0;
+	}
+
+	ret = generic_phy_init(&priv->phy);
+	if (ret) {
+		dev_err(dev, "failed to init usb phy\n");
+		return ret;
+	}
+
+	ret = generic_phy_power_on(&priv->phy);
+	if (ret) {
+		dev_err(dev, "failed to power on usb phy\n");
+		return generic_phy_exit(&priv->phy);
+	}
+
+	return 0;
+}
+
+static int dwc2_shutdown_phy(struct udevice *dev)
+{
+	struct dwc2_priv *priv = dev_get_priv(dev);
+	int ret;
+
+	if (!generic_phy_valid(&priv->phy))
+		return 0;
+
+	ret = generic_phy_power_off(&priv->phy);
+	if (ret) {
+		dev_err(dev, "failed to power off usb phy\n");
+		return ret;
+	}
+
+	ret = generic_phy_exit(&priv->phy);
+	if (ret) {
+		dev_err(dev, "failed to power off usb phy\n");
+		return ret;
+	}
+	return 0;
+}
+
+static int dwc2_reset_init(struct udevice *dev)
+{
+	struct reset_ctl_bulk	resets;
+	int ret;
+
+	ret = reset_get_bulk(dev, &resets);
+	if (ret == -ENOTSUPP || ret == -ENOENT)
+		return 0;
+	else if (ret)
+		return ret;
+
+	reset_assert_bulk(&resets);
+	udelay(2);
+	ret = reset_deassert_bulk(&resets);
+	if (ret) {
+		reset_release_bulk(&resets);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int dwc2_clk_init(struct udevice *dev)
+{
+	struct clk_bulk		clks;
+	int ret;
+
+	ret = clk_get_bulk(dev, &clks);
+	if (ret == -ENOSYS || ret == -ENOENT)
+		return 0;
+	if (ret)
+		return ret;
+
+	ret = clk_enable_bulk(&clks);
+	if (ret) {
+		clk_release_bulk(&clks);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int dwc2_usb_probe(struct udevice *dev)
 {
 	struct dwc2_priv *priv = dev_get_priv(dev);
 	struct usb_bus_priv *bus_priv = dev_get_uclass_priv(dev);
+	int ret;
 
 	bus_priv->desc_before_addr = true;
+
+	ret = dwc2_reset_init(dev);
+	if (ret)
+		return ret;
+
+	ret = dwc2_clk_init(dev);
+	if (ret)
+		return ret;
+
+	ret = dwc2_setup_phy(dev);
+	if (ret)
+		return ret;
 
 	return dwc2_init_common(dev, priv);
 }
@@ -1335,6 +1447,8 @@ static int dwc2_usb_remove(struct udevice *dev)
 	ret = dwc_vbus_supply_exit(dev);
 	if (ret)
 		return ret;
+
+	dwc2_shutdown_phy(dev);
 
 	dwc2_uninit_common(priv->regs);
 

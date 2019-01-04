@@ -89,4 +89,13 @@ void *syscon_get_first_range(ulong driver_data);
  */
 struct regmap *syscon_node_to_regmap(ofnode node);
 
+/**
+ * syscon_phandle_to_regmap - get regmap from syscon phandle
+ *
+ * @parent: Parent device containing the phandle pointer
+ * @name: Name of property in the parent device node
+ */
+struct regmap *syscon_phandle_to_regmap(struct udevice *parent,
+					const char *name);
+
 #endif

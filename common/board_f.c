@@ -92,7 +92,7 @@ static int init_func_watchdog_init(void)
 	(defined(CONFIG_M68K) || defined(CONFIG_MICROBLAZE) || \
 	defined(CONFIG_SH) || defined(CONFIG_AT91SAM9_WATCHDOG) || \
 	defined(CONFIG_DESIGNWARE_WATCHDOG) || \
-	defined(CONFIG_IMX_WATCHDOG))
+	defined(CONFIG_IMX_WATCHDOG) || defined(CONFIG_STM32MP_WATCHDOG))
 	hw_watchdog_init();
 	puts("       Watchdog enabled\n");
 # endif
@@ -434,7 +434,6 @@ static int reserve_uboot(void)
 		debug("Reserving %ldk for U-Boot at: %08lx\n",
 		      gd->mon_len >> 10, gd->relocaddr);
 	}
-
 	gd->start_addr_sp = gd->relocaddr;
 
 	return 0;

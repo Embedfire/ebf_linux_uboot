@@ -6,6 +6,7 @@
 
 #include <common.h>
 #include <errno.h>
+#include <div64.h>
 #include <dm.h>
 #include <dm/lists.h>
 #include <dm/device-internal.h>
@@ -74,6 +75,18 @@ int adc_data_mask(struct udevice *dev, unsigned int *data_mask)
 		return -ENOSYS;
 
 	*data_mask = uc_pdata->data_mask;
+	return 0;
+}
+
+int adc_channel_mask(struct udevice *dev, unsigned int *channel_mask)
+{
+	struct adc_uclass_platdata *uc_pdata = dev_get_uclass_platdata(dev);
+
+	if (!uc_pdata)
+		return -ENOSYS;
+
+	*channel_mask = uc_pdata->channel_mask;
+
 	return 0;
 }
 
@@ -264,8 +277,13 @@ static int adc_vdd_platdata_update(struct udevice *dev)
 	 * will bind before its supply regulator device, then the below 'get'
 	 * will return an error.
 	 */
-	if (!uc_pdata->vdd_supply)
-		return 0;
+	if (!uc_pdata->vdd_supply) {
+		/* Only get vdd_supply once */
+		ret = device_get_supply_regulator(dev, "vdd-supply",
+						  &uc_pdata->vdd_supply);
+		if (ret)
+			return ret;
+	}
 
 	ret = regulator_get_value(uc_pdata->vdd_supply);
 	if (ret < 0)
@@ -281,8 +299,12 @@ static int adc_vss_platdata_update(struct udevice *dev)
 	struct adc_uclass_platdata *uc_pdata = dev_get_uclass_platdata(dev);
 	int ret;
 
-	if (!uc_pdata->vss_supply)
-		return 0;
+	if (!uc_pdata->vss_supply) {
+		ret = device_get_supply_regulator(dev, "vss-supply",
+						  &uc_pdata->vss_supply);
+		if (ret)
+			return ret;
+	}
 
 	ret = regulator_get_value(uc_pdata->vss_supply);
 	if (ret < 0)
@@ -325,6 +347,30 @@ int adc_vss_value(struct udevice *dev, int *uV)
 		return -ENODATA;
 
 	*uV = uc_pdata->vss_microvolts * value_sign;
+
+	return 0;
+}
+
+int adc_raw_to_uV(struct udevice *dev, unsigned int raw, int *uV)
+{
+	unsigned int data_mask;
+	int ret, val, vref;
+	u64 raw64 = raw;
+
+	ret = adc_vdd_value(dev, &vref);
+	if (ret)
+		return ret;
+
+	if (!adc_vss_value(dev, &val))
+		vref -= val;
+
+	ret = adc_data_mask(dev, &data_mask);
+	if (ret)
+		return ret;
+
+	raw64 *= vref;
+	do_div(raw64, data_mask);
+	*uV = raw64;
 
 	return 0;
 }

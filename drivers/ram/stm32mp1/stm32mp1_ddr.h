@@ -26,6 +26,7 @@ struct stm32mp1_ddrphy;
  * @ctl: DDR controleur base address
  * @clk: DDR clock
  * @phy: DDR PHY base address
+ * @pwr: pwr base address
  * @rcc: rcc base address
  */
 struct ddr_info {
@@ -34,6 +35,7 @@ struct ddr_info {
 	struct clk clk;
 	struct stm32mp1_ddrctl *ctl;
 	struct stm32mp1_ddrphy *phy;
+	void *pwr;
 	u32 rcc;
 };
 
@@ -157,7 +159,7 @@ struct stm32mp1_ddrphy_cal {
 
 struct stm32mp1_ddr_info {
 	const char *name;
-	u16 speed; /* in MHZ */
+	u32 speed; /* in kHZ */
 	u32 size;  /* memory size in byte = col * row * width */
 };
 
@@ -172,7 +174,7 @@ struct stm32mp1_ddr_config {
 	struct stm32mp1_ddrphy_cal p_cal;
 };
 
-int stm32mp1_ddr_clk_enable(struct ddr_info *priv, u16 mem_speed);
+int stm32mp1_ddr_clk_enable(struct ddr_info *priv, u32 mem_speed);
 void stm32mp1_ddrphy_init(struct stm32mp1_ddrphy *phy, u32 pir);
 void stm32mp1_refresh_disable(struct stm32mp1_ddrctl *ctl);
 void stm32mp1_refresh_restore(struct stm32mp1_ddrctl *ctl,
@@ -196,10 +198,6 @@ int stm32mp1_dump_param(const struct stm32mp1_ddr_config *config,
 void stm32mp1_edit_param(const struct stm32mp1_ddr_config *config,
 			 char *name,
 			 char *string);
-
-void stm32mp1_dump_info(
-	const struct ddr_info *priv,
-	const struct stm32mp1_ddr_config *config);
 
 bool stm32mp1_ddr_interactive(
 	void *priv,

@@ -233,6 +233,8 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
 	      request, requesttype, value, index, size);
 	dev->status = USB_ST_NOT_PROC; /*not yet processed */
 
+	mdelay(5);
+
 	err = submit_control_msg(dev, pipe, data, size, setup_packet);
 	if (err < 0)
 		return err;
