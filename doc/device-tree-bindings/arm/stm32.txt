@@ -1,0 +1,17 @@
+STMicroelectronics STM32 Platforms Device Tree Bindings
+
+Each device tree must specify which STM32 SoC it uses,
+using one of the following compatible strings:
+
+  st,stm32f429
+  st,stm32f469
+  st,stm32f746
+  st,stm32h743
+  st,stm32mp157
+
+Required nodes:
+
+- syscon: some subnode of the STM32 SoC node must be a
+  system controller node pointing to the control registers,
+  with the compatible string set to one of these tuples:
+  "st,stm32-syscfg", "syscon"

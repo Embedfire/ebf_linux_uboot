@@ -1,0 +1,138 @@
+* STMicroelectronics STPMIC1 Power Management IC
+
+Required parent device properties:
+- compatible: "st,stpmic1"
+- reg: the I2C slave address for the stpmic1 chip
+- interrupts-extended: interrupt lines to use: second irq is for wakeup.
+- #interrupt-cells: should be 2.
+- interrupt-controller: describes the STPMIC1 as an interrupt
+  controller (has its own domain). interrupt number are the following:
+	/* Interrupt Register 1 (0x50 for latch) */
+	IT_SWOUT_R=0
+	IT_SWOUT_F=1
+	IT_VBUS_OTG_R=2
+	IT_VBUS_OTG_F=3
+	IT_WAKEUP_R=4
+	IT_WAKEUP_F=5
+	IT_PONKEY_R=6
+	IT_PONKEY_F=7
+	/* Interrupt Register 2 (0x51 for latch) */
+	IT_OVP_BOOST=8
+	IT_OCP_BOOST=9
+	IT_OCP_SWOUT=10
+	IT_OCP_OTG=11
+	IT_CURLIM_BUCK4=12
+	IT_CURLIM_BUCK3=13
+	IT_CURLIM_BUCK2=14
+	IT_CURLIM_BUCK1=15
+	/* Interrupt Register 3 (0x52 for latch) */
+	IT_SHORT_SWOUT=16
+	IT_SHORT_SWOTG=17
+	IT_CURLIM_LDO6=18
+	IT_CURLIM_LDO5=19
+	IT_CURLIM_LDO4=20
+	IT_CURLIM_LDO3=21
+	IT_CURLIM_LDO2=22
+	IT_CURLIM_LDO1=23
+	/* Interrupt Register 3 (0x52 for latch) */
+	IT_SWIN_R=24
+	IT_SWIN_F=25
+	IT_RESERVED_1=26
+	IT_RESERVED_2=27
+	IT_VINLOW_R=28
+	IT_VINLOW_F=29
+	IT_TWARN_R=30
+	IT_TWARN_F=31
+
+Optional parent device properties:
+- st,main_control_register:
+	-bit 1: Power cycling will be performed on turn OFF condition
+	-bit 2: PWRCTRL is functional
+	-bit 3: PWRCTRL active high
+- st,pads_pull_register:
+	-bit 1: WAKEUP pull down is not active
+	-bit 2: PWRCTRL pull up is active
+	-bit 3: PWRCTRL pull down is active
+	-bit 4: WAKEUP detector is disabled
+- st,vin_control_register:
+	-bit 0: VINLOW monitoring is enabled
+	-bit [1...3]: VINLOW rising threshold
+		000 VINOK_f + 50mV
+		001 VINOK_f + 100mV
+		010 VINOK_f + 150mV
+		011 VINOK_f + 200mV
+		100 VINOK_f + 250mV
+		101 VINOK_f + 300mV
+		110 VINOK_f + 350mV
+		111 VINOK_f + 400mV
+	-bit [4...5]: VINLOW hyst
+		00 100mV
+		01 200mV
+		10 300mV
+		11 400mV
+	-bit 6: SW_OUT detector is disabled
+	-bit 7: SW_IN detector is enabled.
+- st,usb_control_register:
+	-bit 3: SW_OUT current limit
+		0: 600mA
+		1: 1.1A
+	-bit 4: VBUS_OTG discharge is enabled
+	-bit 5: SW_OUT discharge is enabled
+	-bit 6: VBUS_OTG detection is enabled
+	-bit 7: BOOST_OVP is disabled
+
+
+stpmic1 consists is a varied group of sub-devices:
+
+Device			 Description
+------			------------
+stpmic1-onkey		: On key
+stpmic1-regulators	: Regulators
+stpmic1-wdt		: Watchdog
+
+each sub-device bindings is be described in associated driver
+documentation section.
+
+Example:
+
+pmic: stpmic1@33 {
+	compatible = "st,stpmic1";
+	reg = <0x33>;
+	interrupts = <0 2>;
+	interrupts-extended = <&intc GIC_SPI 149 IRQ_TYPE_NONE>,
+			      <&exti 55 1>;
+	st,version_status = <0x10>;
+	st,main_control_register=<0x0c>;
+	interrupt-controller;
+	#interrupt-cells = <2>;
+	onkey {
+		compatible = "st,stpmic1-onkey";
+		interrupt-parent = <&pmic>;
+		interrupts = <7 0>,<6 1>;
+		st,onkey-pwroff-enabled;
+		st,onkey-press-seconds = <10>;
+	};
+
+	watchdog {
+		compatible = "st,stpmic1-wdt";
+	};
+
+	regulators {
+		compatible = "st,stpmic1-regulators";
+
+		vdd_core: regulator@0 {
+			regulator-compatible = "buck1";
+			regulator-name = "vdd_core";
+			regulator-boot-on;
+			regulator-min-microvolt = <700000>;
+			regulator-max-microvolt = <1200000>;
+		};
+		vdd: regulator@1 {
+			regulator-compatible = "buck3";
+			regulator-name = "vdd";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-boot-on;
+			regulator-pull-down;
+		};
+	};
