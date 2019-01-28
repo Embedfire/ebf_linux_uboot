@@ -35,6 +35,9 @@
 #define STM32_DDR_BASE			0xC0000000
 #define STM32_DDR_SIZE			SZ_1G
 
+#define STM32_RETRAM_BASE		0x38000000
+#define STM32_RETRAM_SIZE		0x00010000
+
 #ifndef __ASSEMBLY__
 #include <asm/types.h>
 

@@ -10,6 +10,26 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+static void enable_vidconsole(void)
+{
+#ifdef CONFIG_DM_VIDEO
+	char *stdname;
+	char buf[64];
+
+	stdname = env_get("stdout");
+	if (!strstr(stdname, "vidconsole")) {
+		snprintf(buf, sizeof(buf), "%s,vidconsole", stdname);
+		env_set("stdout", buf);
+	}
+
+	stdname = env_get("stderr");
+	if (!strstr(stdname, "vidconsole")) {
+		snprintf(buf, sizeof(buf), "%s,vidconsole", stdname);
+		env_set("stderr", buf);
+	}
+#endif
+}
+
 static int do_stm32prog(cmd_tbl_t *cmdtp, int flag, int argc,
 			char * const argv[])
 {
@@ -43,6 +63,8 @@ static int do_stm32prog(cmd_tbl_t *cmdtp, int flag, int argc,
 	}
 	if (argc > 4)
 		size = simple_strtoul(argv[4], NULL, 16);
+
+	enable_vidconsole();
 
 	data = stm32prog_init(link, dev, addr, size);
 	if (!data)

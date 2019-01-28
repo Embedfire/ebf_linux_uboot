@@ -47,6 +47,19 @@ config TARGET_STM32MP1
 		STMicroelectronics MPU with core ARMv7
 		dual core A7 for STM32MP153, monocore for STM32MP151
 
+config STM32MP1_RESET_HALT_WORKAROUND
+	bool "workaround for reset halt deubg on stm32mp15x"
+	depends on TARGET_STM32MP1
+	default y
+	help
+		Activate a workaround for current STM32MP15x revision B
+		limitation on debug reset halt not handle by ROM code:
+		add a delay loop early in the SPL boot process to wait for
+		the debugger to attach
+		it can be removed when using the Soc revision
+		that fixes the limitation.
+
+
 config STM32MP1_TRUSTED
 	bool "Support trusted boot with TF-A"
 	default y if !SPL
