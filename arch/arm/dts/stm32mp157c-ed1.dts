@@ -6,6 +6,7 @@
 /dts-v1/;
 
 #include "stm32mp157c.dtsi"
+#include "stm32mp157c-m4-srm.dtsi"
 #include "stm32mp157caa-pinctrl.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/mfd/st,stpmic1.h>
@@ -202,7 +203,7 @@
 
 			vddcore: buck1 {
 				regulator-name = "vddcore";
-				regulator-min-microvolt = <800000>;
+				regulator-min-microvolt = <1200000>;
 				regulator-max-microvolt = <1350000>;
 				regulator-always-on;
 				regulator-initial-mode = <0>;
