@@ -242,7 +242,6 @@ static int dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
 	u32 val;
 
 	/* Update lane capabilities according to hw version */
-	dsi->hw_version = dsi_read(dsi, DSI_VERSION) & VERSION;
 	dsi->lane_min_kbps = LANE_MIN_KBPS;
 	dsi->lane_max_kbps = LANE_MAX_KBPS;
 	if (dsi->hw_version == HWVER_131) {
@@ -310,9 +309,9 @@ static const struct dw_mipi_dsi_phy_ops dw_mipi_dsi_stm_phy_ops = {
 
 static int stm32_dsi_attach(struct udevice *dev)
 {
-	struct stm32_dsi_priv *priv = dev_get_priv(dev);
+	struct stm32_dsi_priv *dsi = dev_get_priv(dev);
 	struct dw_mipi_dsi_plat_data *platdata = dev_get_platdata(dev);
-	struct mipi_dsi_device *device = &priv->device;
+	struct mipi_dsi_device *device = &dsi->device;
 	int ret;
 
 	platdata->max_data_lanes = 2;
@@ -336,8 +335,8 @@ static int stm32_dsi_attach(struct udevice *dev)
 static int stm32_dsi_set_backlight(struct udevice *dev, int percent)
 {
 	struct dw_mipi_dsi_plat_data *dplat = dev_get_platdata(dev);
-	struct stm32_dsi_priv *priv = dev_get_priv(dev);
-	struct mipi_dsi_device *device = &priv->device;
+	struct stm32_dsi_priv *dsi = dev_get_priv(dev);
+	struct mipi_dsi_device *device = &dsi->device;
 	struct udevice *panel = dplat->panel;
 	struct mipi_dsi_panel_plat *mplat;
 	int ret;
@@ -359,29 +358,29 @@ static int stm32_dsi_set_backlight(struct udevice *dev, int percent)
 
 static int stm32_dsi_probe(struct udevice *dev)
 {
-	struct stm32_dsi_priv *priv = dev_get_priv(dev);
-	struct mipi_dsi_device *device = &priv->device;
+	struct stm32_dsi_priv *dsi = dev_get_priv(dev);
+	struct mipi_dsi_device *device = &dsi->device;
 	struct reset_ctl rst;
 	struct clk clk;
 	int ret;
 
 	device->dev = dev;
 
-	priv->base = (void *)dev_read_addr(dev);
-	if ((fdt_addr_t)priv->base == FDT_ADDR_T_NONE) {
+	dsi->base = (void *)dev_read_addr(dev);
+	if ((fdt_addr_t)dsi->base == FDT_ADDR_T_NONE) {
 		dev_err(dev, "dsi dt register address error\n");
 		return -EINVAL;
 	}
 
 	if (IS_ENABLED(CONFIG_DM_REGULATOR)) {
 		ret =  device_get_supply_regulator(dev, "phy-dsi-supply",
-						   &priv->vdd_reg);
+						   &dsi->vdd_reg);
 		if (ret && ret != -ENOENT) {
 			dev_err(dev, "Warning: cannot get phy dsi supply\n");
 			return -ENODEV;
 		}
 
-		ret = regulator_set_enable(priv->vdd_reg, true);
+		ret = regulator_set_enable(dsi->vdd_reg, true);
 		if (ret)
 			return -ENODEV;
 	}
@@ -389,14 +388,14 @@ static int stm32_dsi_probe(struct udevice *dev)
 	ret = clk_get_by_name(device->dev, "pclk", &clk);
 	if (ret) {
 		dev_err(dev, "peripheral clock get error %d\n", ret);
-		regulator_set_enable(priv->vdd_reg, false);
+		regulator_set_enable(dsi->vdd_reg, false);
 		return -ENODEV;
 	}
 
 	ret = clk_enable(&clk);
 	if (ret) {
 		dev_err(dev, "peripheral clock enable error %d\n", ret);
-		regulator_set_enable(priv->vdd_reg, false);
+		regulator_set_enable(dsi->vdd_reg, false);
 		return -ENODEV;
 	}
 
@@ -404,22 +403,32 @@ static int stm32_dsi_probe(struct udevice *dev)
 	if (ret) {
 		dev_err(dev, "pll reference clock get error %d\n", ret);
 		clk_disable(&clk);
-		regulator_set_enable(priv->vdd_reg, false);
+		regulator_set_enable(dsi->vdd_reg, false);
 		return ret;
 	}
 
-	priv->pllref_clk = (unsigned int)clk_get_rate(&clk);
+	dsi->pllref_clk = (unsigned int)clk_get_rate(&clk);
 
 	ret = reset_get_by_index(device->dev, 0, &rst);
 	if (ret) {
 		dev_err(dev, "missing dsi hardware reset\n");
 		clk_disable(&clk);
-		regulator_set_enable(priv->vdd_reg, false);
+		regulator_set_enable(dsi->vdd_reg, false);
 		return -ENODEV;
 	}
 
 	/* Reset */
 	reset_deassert(&rst);
+
+	/* check hardware version */
+	dsi->hw_version = dsi_read(dsi, DSI_VERSION) & VERSION;
+	if (dsi->hw_version != HWVER_130 &&
+	    dsi->hw_version != HWVER_131) {
+		dev_err(dev, "bad dsi hardware version\n");
+		clk_disable(&clk);
+		regulator_set_enable(dsi->vdd_reg, false);
+		return -ENODEV;
+	}
 
 	return 0;
 }

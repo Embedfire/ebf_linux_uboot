@@ -18,7 +18,6 @@
 
 /**
  * struct stm32_copro_privdata - power processor private data
- * @loadaddr:	base address for loading the power processor
  * @reset_ctl:	reset controller handle
  * @hold_boot_regmap
  * @hold_boot_offset
@@ -26,7 +25,6 @@
  * @secured_soc:	TZEN flag (register protection)
  */
 struct stm32_copro_privdata {
-	phys_addr_t loadaddr;
 	struct reset_ctl reset_ctl;
 	struct regmap *hold_boot_regmap;
 	uint hold_boot_offset;
@@ -46,20 +44,8 @@ static int st_of_to_priv(struct udevice *dev,
 {
 	struct regmap *regmap;
 	const fdt32_t *cell;
-	const void *blob = gd->fdt_blob;
 	uint tz_offset, tz_mask, tzen;
 	int len, ret;
-
-	if (!blob) {
-		dev_dbg(dev, "no dt?\n");
-		return -EINVAL;
-	}
-
-	priv->loadaddr = dev_read_addr(dev);
-	if (priv->loadaddr == FDT_ADDR_T_NONE) {
-		dev_dbg(dev, "no 'reg' property\n");
-		return -EINVAL;
-	}
 
 	regmap = syscon_phandle_to_regmap(dev, "st,syscfg-holdboot");
 	if (IS_ERR(regmap)) {
@@ -123,8 +109,7 @@ static int stm32_copro_probe(struct udevice *dev)
 
 	ret = st_of_to_priv(dev, priv);
 
-	dev_dbg(dev, "probed with slave_addr=0x%08lX (%d)\n",
-		priv->loadaddr, ret);
+	dev_dbg(dev, "probed (%d)\n", ret);
 
 	return ret;
 }
@@ -163,6 +148,17 @@ static int stm32_copro_set_hold_boot(struct udevice *dev, bool hold)
 	return ret;
 }
 
+static ulong stm32_copro_da_to_pa(struct udevice *dev, ulong da)
+{
+	/* to update with address translate by DT range  */
+
+	/* CM4 boot at address 0x0 = RETRAM alias, not available for CA7 load */
+	if (da >= 0 && da < STM32_RETRAM_SIZE)
+		return (da + STM32_RETRAM_BASE);
+
+	return da;
+}
+
 /**
  * stm32_copro_load() - Loadup the STM32 Cortex-M4 remote processor
  * @dev:	corresponding STM32 remote processor device
@@ -174,6 +170,7 @@ static int stm32_copro_set_hold_boot(struct udevice *dev, bool hold)
 static int stm32_copro_load(struct udevice *dev, ulong addr, ulong size)
 {
 	struct stm32_copro_privdata *priv;
+	phys_addr_t loadaddr;
 	int ret;
 
 	priv = dev_get_priv(dev);
@@ -186,10 +183,12 @@ static int stm32_copro_load(struct udevice *dev, ulong addr, ulong size)
 		return ret;
 	}
 
+	/* by default load for copro BOOT address = 0x0 */
+	loadaddr = stm32_copro_da_to_pa(dev, 0x0);
 	dev_dbg(dev, "Loading binary from 0x%08lX, size 0x%08lX to 0x%08lX\n",
-		addr, size, priv->loadaddr);
+		addr, size, loadaddr);
 
-	memcpy((void *)priv->loadaddr, (void *)addr, size);
+	memcpy((void *)loadaddr, (void *)addr, size);
 
 	dev_dbg(dev, "Complete!\n");
 	return 0;
@@ -239,15 +238,6 @@ static int stm32_copro_reset(struct udevice *dev)
 	}
 
 	return 0;
-}
-
-ulong stm32_copro_da_to_pa(struct udevice *dev, ulong da)
-{
-	/* to update according to lastest DT */
-	if (da >= 0 && da < 0x10000)
-		return (da + 0x38000000);
-
-	return da;
 }
 
 static const struct dm_rproc_ops stm32_copro_ops = {
