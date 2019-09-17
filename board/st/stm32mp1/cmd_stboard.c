@@ -11,7 +11,7 @@
 
 static bool check_stboard(u16 board)
 {
-	int i;
+	unsigned int i;
 	const u16 st_board_id[] = {
 		0x1272,
 		0x1263,

@@ -49,20 +49,26 @@ BootRom => FSBL in SYSRAM => SSBL in DDR => OS (Linux Kernel)
 with FSBL = First Stage Bootloader
      SSBL = Second Stage Bootloader
 
-2 boot configurations are supported:
+3 boot configurations are supported:
 
 1) The "Trusted" boot chain (defconfig_file : stm32mp15_trusted_defconfig)
    BootRom => FSBL = Trusted Firmware-A (TF-A) => SSBL = U-Boot
    TF-A performs a full initialization of Secure peripherals and installs a
    secure monitor.
    U-Boot is running in normal world and uses TF-A monitor
-   to access to secure resources
+   to access to secure resources.
 
-2) The "Basic" boot chain (defconfig_file : stm32mp15_basic_defconfig)
+2) The "Trusted & OP-TEE" boot chain (defconfig_file : stm32mp15_optee_defconfig)
+   BootRom => FSBL = Trusted Firmware-A (TF-A) => SSBL = U-Boot
+   TF-A performs a full initialization of Secure peripherals and installs OP-TEE
+   from specific partitions (teeh, teed, teex).
+   U-Boot is running in normal world and uses OP-TEE monitor to access.
+
+3) The "Basic" boot chain (defconfig_file : stm32mp15_basic_defconfig)
    BootRom => FSBL = U-Boot SPL => SSBL = U-Boot
    SPL has limited security initialisation
    U-Boot is running in secure mode and provide a secure monitor to the kernel
-   with only PSCI support (Power State Coordination Interface defined by ARM)
+   with only PSCI support (Power State Coordination Interface defined by ARM).
 
 All the STM32MP1 boards supported by U-Boot use the same generic board
 stm32mp1 which support all the bootable devices.
@@ -108,13 +114,18 @@ the supported device trees for stm32mp157 are:
 
 	for example: use one output directory for each configuration
 	# export KBUILD_OUTPUT=stm32mp15_trusted
+	# export KBUILD_OUTPUT=stm32mp15_optee
 	# export KBUILD_OUTPUT=stm32mp15_basic
+
+	you can build outside of code directory:
+	# export KBUILD_OUTPUT=../build/stm32mp15_trusted
 
 4. Configure U-Boot:
 
 	# make <defconfig_file>
 
 	- For trusted boot mode : "stm32mp15_trusted_defconfig"
+	- For trusted & optee boot mode : "stm32mp15_optee_defconfig"
 	- For basic boot mode: "stm32mp15_basic_defconfig"
 
 5. Configure the device-tree and build the U-Boot image:
@@ -127,7 +138,12 @@ the supported device trees for stm32mp157 are:
 	# make stm32mp15_trusted_defconfig
 	# make DEVICE_TREE=stm32mp157c-ev1 all
 
-  b) basic boot on dk2
+  b) trusted & OP-TEE boot on dk1
+	# export KBUILD_OUTPUT=stm32mp15_optee
+	# make stm32mp15_optee_defconfig
+	# make DEVICE_TREE=stm32mp157a-dk1 all
+
+  c) basic boot on dk2
 	# export KBUILD_OUTPUT=stm32mp15_basic
 	# make stm32mp15_basic_defconfig
 	# make DEVICE_TREE=stm32mp157c-dk2 all
@@ -140,7 +156,7 @@ the supported device trees for stm32mp157 are:
   So in the output directory (selected by KBUILD_OUTPUT),
   you can found the needed files:
 
-  a) For Trusted boot
+  a) For Trusted boot (with or without OP-TEE)
    + FSBL = tf-a.stm32 (provided by TF-A compilation)
    + SSBL = u-boot.stm32
 
@@ -160,7 +176,6 @@ You can select the boot mode,
  -----------------------------------
   Reserved	0	0	0
   NOR		0	0	1
-  SD-Card	1	1	1
   SD-Card	1	0	1
   eMMC		0	1	0
   NAND		0	1	1
@@ -193,14 +208,14 @@ The minimal requirements for STMP32MP1 boot up to U-Boot are:
 - one ssbl partition for U-Boot
 
 Then the minimal GPT partition is:
-   ----- ------- --------- ---------------
-  | Num | Name  | Size    |  Content     |
-   ----- ------- -------- ----------------
-  |  1  | fsbl1 | 256 KiB |  TF-A or SPL |
-  |  2  | fsbl2 | 256 KiB |  TF-A or SPL |
-  |  3  | ssbl  | enought |  U-Boot      |
-  |  *  |  -    |  -      |  Boot/Rootfs |
-   ----- ------- --------- ---------------
+    ----- ------- --------- --------------
+   | Num | Name  | Size    |  Content     |
+    ----- ------- --------- --------------
+   |  1  | fsbl1 | 256 KiB |  TF-A or SPL |
+   |  2  | fsbl2 | 256 KiB |  TF-A or SPL |
+   |  3  | ssbl  | enought |  U-Boot      |
+   |  *  |  -    |  -      |  Boot/Rootfs |
+    ----- ------- --------- --------------
 
 (*) add bootable partition for extlinux.conf
     following Generic Distribution
@@ -224,7 +239,7 @@ for example: with gpt table with 128 entries
 
 	you can add other partitions for kernel
 	one partition rootfs for example:
-		-n 3:5154:		-c 4:rootfs \
+		-n 4:5154:		-c 4:rootfs \
 
   c) copy the FSBL (2 times) and SSBL file on the correct partition.
      in this example in partition 1 to 3
@@ -239,7 +254,7 @@ for example: with gpt table with 128 entries
 	# dd if=tf-a.stm32 of=/dev/mmcblk0p2
 	# dd if=u-boot.stm32 of=/dev/mmcblk0p3
 
-To boot from SDCard, select BootPinMode = 1 1 1 and reset.
+To boot from SDCard, select BootPinMode = 1 0 1 and reset.
 
 8. Prepare eMMC
 ===============
@@ -248,7 +263,7 @@ You can use U-Boot to copy binary in eMMC.
 In the next example, you need to boot from SDCARD and the images (u-boot-spl.stm32, u-boot.img)
 are presents on SDCARD (mmc 0) in ext4 partition 4 (bootfs).
 
-To boot from SDCard, select BootPinMode = 1 1 1 and reset.
+To boot from SDCard, select BootPinMode = 1 0 1 and reset.
 
 Then you update the eMMC with the next U-Boot command :
 

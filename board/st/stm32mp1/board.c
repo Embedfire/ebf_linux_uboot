@@ -47,7 +47,7 @@ int board_ddr_power_init(enum ddr_type ddr_type)
 	ret = uclass_get_device_by_driver(UCLASS_PMIC,
 					  DM_GET_DRIVER(pmic_stpmic1), &dev);
 	if (ret)
-		/* No PMIC on power discrete board */
+		/* No PMIC on board */
 		return 0;
 
 	switch (ddr_type) {
@@ -149,7 +149,7 @@ int board_ddr_power_init(enum ddr_type ddr_type)
 
 		mdelay(STPMIC1_DEFAULT_START_UP_DELAY_MS);
 
-		/* Enable VDD_DDR22 =BUCK2 */
+		/* Enable VDD_DDR2 =BUCK2 */
 		ret = pmic_clrsetbits(dev,
 				      STPMIC1_BUCKX_MAIN_CR(STPMIC1_BUCK2),
 				      STPMIC1_BUCK_ENA, STPMIC1_BUCK_ENA);
