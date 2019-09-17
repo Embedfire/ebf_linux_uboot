@@ -98,10 +98,52 @@ static int do_dtimg_size(cmd_tbl_t *cmdtp, int flag, int argc,
 	return dtimg_get_fdt(argc, argv, CMD_DTIMG_SIZE);
 }
 
+static int do_dtimg_getindex(cmd_tbl_t *cmdtp, int flag, int argc,
+			     char * const argv[])
+{
+	char *endp;
+	ulong hdr_addr;
+	int index;
+	char buf[512] = { 0 };
+
+	if (argc < 4)
+		return CMD_RET_USAGE;
+
+	hdr_addr = simple_strtoul(argv[1], &endp, 16);
+	if (*endp != '\0') {
+		printf("Error: Wrong image address\n");
+		return CMD_RET_FAILURE;
+	}
+
+	if (!android_dt_check_header(hdr_addr)) {
+		printf("Error: DT image header is incorrect\n");
+		return CMD_RET_FAILURE;
+	}
+
+	index = android_dt_get_index(hdr_addr, strtoul(argv[2], NULL, 0),
+				     strtoul(argv[3], NULL, 0));
+
+	if (index < 0) {
+		printf("Error: board id %04lx not found in DT table\n",
+		       strtoul(argv[2], NULL, 0));
+		return CMD_RET_FAILURE;
+	}
+
+	snprintf(buf, sizeof(buf), "%i", index);
+
+	if (argc == 5)
+		env_set(argv[4], buf);
+	else
+		printf("%s\n", buf);
+
+	return CMD_RET_SUCCESS;
+}
+
 static cmd_tbl_t cmd_dtimg_sub[] = {
 	U_BOOT_CMD_MKENT(dump, 2, 0, do_dtimg_dump, "", ""),
 	U_BOOT_CMD_MKENT(start, 4, 0, do_dtimg_start, "", ""),
 	U_BOOT_CMD_MKENT(size, 4, 0, do_dtimg_size, "", ""),
+	U_BOOT_CMD_MKENT(getindex, 5, 0, do_dtimg_getindex, "", ""),
 };
 
 static int do_dtimg(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
@@ -137,5 +179,11 @@ U_BOOT_CMD(
 	"    - get size (hex, bytes) of FDT in the image, by index\n"
 	"      <addr>: image address in RAM, in hex\n"
 	"      <index>: index of desired FDT in the image\n"
-	"      <varname>: name of variable where to store size of FDT"
+	"      <varname>: name of variable where to store size of FDT\n"
+	"dtimg getindex <addr> <board_id> <board_rev> [varname]\n"
+	"    - get index of FDT in the image, by board identifier and revision\n"
+	"      <addr>: image address in RAM, in hex\n"
+	"      <board_id>: board identifier\n"
+	"      <board_rev>: board revision (0 if not used)\n"
+	"      [varname]: name of variable where to store index of FDT"
 );

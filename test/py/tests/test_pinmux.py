@@ -18,6 +18,7 @@ def test_pinmux_usage_2(u_boot_console):
     assert 'Usage:' in output
 
 @pytest.mark.buildconfigspec('cmd_pinmux')
+@pytest.mark.boardspec('sandbox')
 def test_pinmux_status_all(u_boot_console):
     """Test that 'pinmux status -a' displays pin's muxing."""
     output = u_boot_console.run_command('pinmux status -a')
@@ -28,6 +29,7 @@ def test_pinmux_status_all(u_boot_console):
     assert ('W1        : 1-wire gpio' in output)
 
 @pytest.mark.buildconfigspec('cmd_pinmux')
+@pytest.mark.boardspec('sandbox')
 def test_pinmux_list(u_boot_console):
     """Test that 'pinmux list' returns the pin-controller list."""
     output = u_boot_console.run_command('pinmux list')
@@ -43,6 +45,7 @@ def test_pinmux_dev_bad(u_boot_console):
     assert (expected_output in output)
 
 @pytest.mark.buildconfigspec('cmd_pinmux')
+@pytest.mark.boardspec('sandbox')
 def test_pinmux_dev(u_boot_console):
     """Test that 'pinmux dev' select the wanted pin controller."""
     pincontroller = 'pinctrl'
@@ -51,6 +54,7 @@ def test_pinmux_dev(u_boot_console):
     assert (expected_output in output)
 
 @pytest.mark.buildconfigspec('cmd_pinmux')
+@pytest.mark.boardspec('sandbox')
 def test_pinmux_status(u_boot_console):
     """Test that 'pinmux status' displays selected pincontroller's pin
     muxing descriptions."""

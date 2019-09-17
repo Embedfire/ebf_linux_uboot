@@ -586,5 +586,6 @@ void mtd_get_len_incl_bad(struct mtd_info *mtd, uint64_t offset,
 int mtd_search_alternate_name(const char *mtdname, char *altname,
 			      unsigned int max_len);
 
+void board_mtdparts_default(const char **mtdids, const char **mtdparts);
 #endif
 #endif /* __MTD_MTD_H__ */

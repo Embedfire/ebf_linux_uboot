@@ -47,6 +47,7 @@ obj-$(CONFIG_SANDBOX_SPI) += sandbox_spi.o
 obj-$(CONFIG_SH_SPI) += sh_spi.o
 obj-$(CONFIG_SH_QSPI) += sh_qspi.o
 obj-$(CONFIG_STM32_QSPI) += stm32_qspi.o
+obj-$(CONFIG_STM32_SPI) += stm32_spi.o
 obj-$(CONFIG_SUN4I_SPI) += sun4i_spi.o
 obj-$(CONFIG_TEGRA114_SPI) += tegra114_spi.o
 obj-$(CONFIG_TEGRA20_SFLASH) += tegra20_sflash.o

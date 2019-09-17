@@ -21,6 +21,8 @@
  */
 
 int board_eth_init(bd_t *bis);
+int board_interface_eth_init(int interface_type, bool eth_clk_sel_reg,
+			     bool eth_ref_clk_sel_reg);
 int cpu_eth_init(bd_t *bis);
 
 /* Driver initialization prototypes */

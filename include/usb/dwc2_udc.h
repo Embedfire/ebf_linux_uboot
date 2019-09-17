@@ -10,6 +10,10 @@
 
 #define PHY0_SLEEP              (1 << 5)
 
+#define DWC2_MAX_HW_ENDPOINTS	16
+#define DWC2_SIZE_NB_OFFS	0
+#define DWC2_SIZE_OFFS		1
+
 struct dwc2_plat_otg_data {
 	void		*priv;
 	int		phy_of_node;
@@ -23,6 +27,8 @@ struct dwc2_plat_otg_data {
 	unsigned int	rx_fifo_sz;
 	unsigned int	np_tx_fifo_sz;
 	unsigned int	tx_fifo_sz;
+	/* [0] number of element, [1..17] tx_fifo_sz (max 16 endpoints)*/
+	unsigned int	tx_fifo_sz_array[DWC2_MAX_HW_ENDPOINTS + 1];
 };
 
 int dwc2_udc_probe(struct dwc2_plat_otg_data *pdata);

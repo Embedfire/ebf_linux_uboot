@@ -57,7 +57,7 @@ static int st_of_to_priv(struct udevice *dev,
 	priv->hold_boot_regmap = regmap;
 
 	cell = dev_read_prop(dev, "st,syscfg-holdboot", &len);
-	if (len < 3 * sizeof(fdt32_t)) {
+	if ((3 * sizeof(fdt32_t) - len) > 0) {
 		dev_dbg(dev, "holdboot offset and mask not available\n");
 		return -EINVAL;
 	}
@@ -74,7 +74,7 @@ static int st_of_to_priv(struct udevice *dev,
 	}
 
 	cell = dev_read_prop(dev, "st,syscfg-tz", &len);
-	if (len < 3 * sizeof(fdt32_t)) {
+	if (3 * sizeof(fdt32_t) - len > 0) {
 		dev_dbg(dev, "tz offset and mask not available\n");
 		return -EINVAL;
 	}
@@ -153,7 +153,7 @@ static ulong stm32_copro_da_to_pa(struct udevice *dev, ulong da)
 	/* to update with address translate by DT range  */
 
 	/* CM4 boot at address 0x0 = RETRAM alias, not available for CA7 load */
-	if (da >= 0 && da < STM32_RETRAM_SIZE)
+	if (da < STM32_RETRAM_SIZE)
 		return (da + STM32_RETRAM_BASE);
 
 	return da;

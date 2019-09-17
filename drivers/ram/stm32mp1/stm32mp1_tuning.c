@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+ OR BSD-3-Clause
 /*
- * Copyright (C) 2018, STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019, STMicroelectronics - All Rights Reserved
  */
 
 #if defined(DEBUG)
@@ -17,30 +17,46 @@
 #include "stm32mp1_ddr_regs.h"
 #include "stm32mp1_ddr.h"
 #include "stm32mp1_tests.h"
-#include "stm32mp1_tuning.h"
 
-/* TODO make enum for nominal_delay_m_1.... (for all arrays) */
+#define MAX_DQS_PHASE_IDX _144deg
+#define MAX_DQS_UNIT_IDX 7
+#define MAX_GSL_IDX 5
+#define MAX_GPS_IDX 3
+
+/* Number of bytes used in this SW. ( min 1--> max 4). */
+#define NUM_BYTES 4
+
+enum dqs_phase_enum {
+	_36deg = 0,
+	_54deg = 1,
+	_72deg = 2,
+	_90deg = 3,
+	_108deg = 4,
+	_126deg = 5,
+	_144deg = 6
+};
+
+/* BIST Result struct */
+struct BIST_result {
+	/* Overall test result:
+	 * 0 Fail (any bit failed) ,
+	 * 1 Success (All bits success)
+	 */
+	bool test_result;
+	/* 1: true, all fail /  0: False, not all bits fail */
+	bool all_bits_fail;
+	bool bit_i_test_result[8];  /* 0 fail / 1 success */
+};
+
+/* a struct that defines tuning parameters of a byte. */
+struct tuning_position {
+	u8 phase; /* DQS phase */
+	u8 unit; /* DQS unit delay */
+	u32 bits_delay; /* Bits deskew in this byte */
+};
 
 /* 36deg, 54deg, 72deg, 90deg, 108deg, 126deg, 144deg */
 const u8 dx_dll_phase[7] = {3, 2, 1, 0, 14, 13, 12};
-
-/* New DQ delay value (index). These values are set during Deskew algo */
-u8 deskew_delay[NUM_BYTES][8];
-
-/*If there is still skew on a bit, mark this bit. */
-u8 deskew_non_converge[NUM_BYTES][8];
-
-/*Stores the DQS trim values (PHASE index, unit index) */
-u8 eye_training_val[NUM_BYTES][2];
-
-/* stores the log of pass/fail */
-u8 dqs_gating[NUM_BYTES][MAX_GSL_IDX + 1][MAX_GPS_IDX + 1];
-
-/* stores the dqs gate values (gsl index, gps index) */
-u8 dqs_gate_values[NUM_BYTES][2];
-
-static void itm_soft_reset(struct stm32mp1_ddrphy *phy);
-static u8 set_midpoint_read_dqs_gating(struct stm32mp1_ddrphy *phy, u8 byte);
 
 static u8 BIST_error_max = 1;
 static u32 BIST_seed = 0x1234ABCD;
@@ -64,10 +80,16 @@ static u8 get_nb_bytes(struct stm32mp1_ddrctl *ctl)
 	return nb_bytes;
 }
 
+static void itm_soft_reset(struct stm32mp1_ddrphy *phy)
+{
+	stm32mp1_ddrphy_init(phy, DDRPHYC_PIR_ITMSRST);
+}
+
+#ifdef UNUSED
 /* Read DQS PHASE delay  register and provides the index of the retrieved
  * value in dx_dll_phase array.
  */
-u8 DQS_phase_index(struct stm32mp1_ddrphy *phy, u8 byte)
+static u8 DQS_phase_index(struct stm32mp1_ddrphy *phy, u8 byte)
 {
 	u32 addr = DXNDLLCR(phy, byte);
 	u32 sdphase = 0;
@@ -123,11 +145,13 @@ u8 DQS_phase_index(struct stm32mp1_ddrphy *phy, u8 byte)
 
 	return index;
 }
+#endif
 
+#ifdef UNUSED
 /* Read DQS unit delay register and provides the index of the retrieved value
  * We are assuming that the delay on DQS and DQSN are equal
  */
-u8 DQS_unit_index(struct stm32mp1_ddrphy *phy, u8 byte)
+static u8 DQS_unit_index(struct stm32mp1_ddrphy *phy, u8 byte)
 {
 	u32 addr = DXNDQSTR(phy, byte);
 	u32 index;
@@ -141,12 +165,13 @@ u8 DQS_unit_index(struct stm32mp1_ddrphy *phy, u8 byte)
 
 	return index;
 }
+#endif
 
 /* Read DQ unit delay register and provides the retrieved value for DQS
  * We are assuming that we have the same delay when clocking
  * by DQS and when clocking by DQSN
  */
-u8 DQ_unit_index(struct stm32mp1_ddrphy *phy, u8 byte, u8 bit)
+static u8 DQ_unit_index(struct stm32mp1_ddrphy *phy, u8 byte, u8 bit)
 {
 	u32 index;
 	u32 addr = DXNDQTR(phy, byte);
@@ -163,29 +188,33 @@ u8 DQ_unit_index(struct stm32mp1_ddrphy *phy, u8 byte, u8 bit)
 	return index;
 }
 
+#ifdef UNUSED
 /* read r0dgsl value */
-u8 get_r0dgsl_index(struct stm32mp1_ddrphy *phy, u8 byte)
+static u8 get_r0dgsl_index(struct stm32mp1_ddrphy *phy, u8 byte)
 {
 	u32 addr = DXNDQSTR(phy, byte);
 
 	return (readl(addr) & DDRPHYC_DXNDQSTR_R0DGSL_MASK)
 		>> DDRPHYC_DXNDQSTR_R0DGSL_SHIFT;
 }
+#endif
 
+#ifdef UNUSED
 /*read r0dgsl value */
-u8 get_r0dgps_index(struct stm32mp1_ddrphy *phy, u8 byte)
+static u8 get_r0dgps_index(struct stm32mp1_ddrphy *phy, u8 byte)
 {
 	u32 addr = DXNDQSTR(phy, byte);
 
 	return (readl(addr) & DDRPHYC_DXNDQSTR_R0DGPS_MASK)
 		>> DDRPHYC_DXNDQSTR_R0DGPS_SHIFT;
 }
+#endif
 
 /* Sets the DQS phase delay for a byte lane.
  *phase delay is specified by giving the index of the desired delay
  * in the dx_dll_phase array.
  */
-void DQS_phase_delay(struct stm32mp1_ddrphy *phy, u8 byte, u8 phase_idx)
+static void DQS_phase_delay(struct stm32mp1_ddrphy *phy, u8 byte, u8 phase_idx)
 {
 	u8 sdphase_val = 0;
 
@@ -200,8 +229,8 @@ void DQS_phase_delay(struct stm32mp1_ddrphy *phy, u8 byte, u8 phase_idx)
  * unit delay is specified by giving the index of the desired delay
  * for dgsdly and dqsndly (same value).
  */
-void DQS_unit_delay(struct stm32mp1_ddrphy *phy,
-		    u8 byte, u8 unit_dly_idx)
+static void DQS_unit_delay(struct stm32mp1_ddrphy *phy,
+			   u8 byte, u8 unit_dly_idx)
 {
 	/* Write the same value in DXNDQSTR.DQSDLY and DXNDQSTR.DQSNDLY */
 	clrsetbits_le32(DXNDQSTR(phy, byte),
@@ -219,9 +248,9 @@ void DQS_unit_delay(struct stm32mp1_ddrphy *phy,
 /* Sets the DQ unit delay for a bit line in particular byte lane.
  * unit delay is specified by giving the desired delay
  */
-void set_DQ_unit_delay(struct stm32mp1_ddrphy *phy,
-		       u8 byte, u8 bit,
-		       u8 dq_delay_index)
+static void set_DQ_unit_delay(struct stm32mp1_ddrphy *phy,
+			      u8 byte, u8 bit,
+			      u8 dq_delay_index)
 {
 	u8 dq_bit_delay_val = dq_delay_index | (dq_delay_index << 2);
 
@@ -232,16 +261,16 @@ void set_DQ_unit_delay(struct stm32mp1_ddrphy *phy,
 			dq_bit_delay_val << DDRPHYC_DXNDQTR_DQDLY_SHIFT(bit));
 }
 
-void set_r0dgsl_delay(struct stm32mp1_ddrphy *phy,
-		      u8 byte, u8 r0dgsl_idx)
+static void set_r0dgsl_delay(struct stm32mp1_ddrphy *phy,
+			     u8 byte, u8 r0dgsl_idx)
 {
 	clrsetbits_le32(DXNDQSTR(phy, byte),
 			DDRPHYC_DXNDQSTR_R0DGSL_MASK,
 			r0dgsl_idx << DDRPHYC_DXNDQSTR_R0DGSL_SHIFT);
 }
 
-void set_r0dgps_delay(struct stm32mp1_ddrphy *phy,
-		      u8 byte, u8 r0dgps_idx)
+static void set_r0dgps_delay(struct stm32mp1_ddrphy *phy,
+			     u8 byte, u8 r0dgps_idx)
 {
 	clrsetbits_le32(DXNDQSTR(phy, byte),
 			DDRPHYC_DXNDQSTR_R0DGPS_MASK,
@@ -249,7 +278,7 @@ void set_r0dgps_delay(struct stm32mp1_ddrphy *phy,
 }
 
 /* Basic BIST configuration for data lane tests. */
-void config_BIST(struct stm32mp1_ddrphy *phy)
+static void config_BIST(struct stm32mp1_ddrphy *phy)
 {
 	/* Selects the SDRAM bank address to be used during BIST. */
 	u32 bbank = 0;
@@ -309,7 +338,7 @@ void config_BIST(struct stm32mp1_ddrphy *phy)
 }
 
 /* Select the Byte lane to be tested by BIST. */
-void BIST_datx8_sel(struct stm32mp1_ddrphy *phy, u8 datx8)
+static void BIST_datx8_sel(struct stm32mp1_ddrphy *phy, u8 datx8)
 {
 	clrsetbits_le32(&phy->bistrr,
 			DDRPHYC_BISTRR_BDXSEL_MASK,
@@ -320,8 +349,8 @@ void BIST_datx8_sel(struct stm32mp1_ddrphy *phy, u8 datx8)
 }
 
 /* Perform BIST Write_Read test on a byte lane and return test result. */
-void BIST_test(struct stm32mp1_ddrphy *phy, u8 byte,
-	       struct BIST_result *bist)
+static void BIST_test(struct stm32mp1_ddrphy *phy, u8 byte,
+		      struct BIST_result *bist)
 {
 	bool result = true; /* BIST_SUCCESS */
 	u32 cnt = 0;
@@ -405,8 +434,9 @@ run:
 #endif
 }
 
+#ifdef UNUSED
 /* Init the Write_Read result struct. */
-void init_result_struct(struct BIST_result *result)
+static void init_result_struct(struct BIST_result *result)
 {
 	u8 i = 0;
 
@@ -422,13 +452,16 @@ void init_result_struct(struct BIST_result *result)
 	for (i = 0; i < 8; i++)
 		result->bit_i_test_result[i] = true;
 }
+#endif
 
 /* After running the deskew algo, this function applies the new DQ delays
  * by reading them from the array "deskew_delay"and writing in PHY registers.
  * The bits that are not deskewed parfectly (too much skew on them,
  * or data eye very wide) are marked in the array deskew_non_converge.
  */
-void apply_deskew_results(struct stm32mp1_ddrphy *phy, u8 byte)
+static void apply_deskew_results(struct stm32mp1_ddrphy *phy, u8 byte,
+				 u8 deskew_delay[NUM_BYTES][8],
+				 u8 deskew_non_converge[NUM_BYTES][8])
 {
 	u8  bit_i;
 	u8  index;
@@ -464,6 +497,10 @@ void apply_deskew_results(struct stm32mp1_ddrphy *phy, u8 byte)
 static enum test_result bit_deskew(struct stm32mp1_ddrctl *ctl,
 				   struct stm32mp1_ddrphy *phy, char *string)
 {
+	/* New DQ delay value (index), set during Deskew algo */
+	u8 deskew_delay[NUM_BYTES][8];
+	/*If there is still skew on a bit, mark this bit. */
+	u8 deskew_non_converge[NUM_BYTES][8];
 	struct BIST_result result;
 	s8 dqs_unit_delay_index = 0;
 	u8 datx8 = 0;
@@ -869,7 +906,8 @@ static enum test_result bit_deskew(struct stm32mp1_ddrctl *ctl,
 			pr_debug("The Deskew algorithm can't converge, there is too much margin in your design. Good job!\n");
 		}
 
-		apply_deskew_results(phy, datx8);
+		apply_deskew_results(phy, datx8, deskew_delay,
+				     deskew_non_converge);
 		/* Restore nominal value for DQS delay */
 		DQS_phase_delay(phy, datx8, 3);
 		DQS_unit_delay(phy, datx8, 3);
@@ -903,6 +941,8 @@ static enum test_result bit_deskew(struct stm32mp1_ddrctl *ctl,
 static enum test_result eye_training(struct stm32mp1_ddrctl *ctl,
 				     struct stm32mp1_ddrphy *phy, char *string)
 {
+	/*Stores the DQS trim values (PHASE index, unit index) */
+	u8 eye_training_val[NUM_BYTES][2];
 	u8 byte = 0;
 	struct BIST_result result;
 	s8 dqs_unit_delay_index = 0;
@@ -1189,7 +1229,7 @@ static enum test_result eye_training(struct stm32mp1_ddrctl *ctl,
 	return TEST_PASSED;
 }
 
-void display_reg_results(struct stm32mp1_ddrphy *phy, u8 byte)
+static void display_reg_results(struct stm32mp1_ddrphy *phy, u8 byte)
 {
 	u8 i = 0;
 
@@ -1211,79 +1251,14 @@ void display_reg_results(struct stm32mp1_ddrphy *phy, u8 byte)
 	       readl(DXNDQTR(phy, byte)));
 }
 
-static enum test_result read_dqs_gating(struct stm32mp1_ddrctl *ctl,
-					struct stm32mp1_ddrphy *phy,
-					char *string)
-{
-	u8 byte, gsl_idx, gps_idx = 0;
-	struct BIST_result result;
-	u8 success = 0;
-	u8 nb_bytes = get_nb_bytes(ctl);
-
-	memset(dqs_gating, 0x0, sizeof(dqs_gating));
-
-	/*disable dqs drift compensation*/
-	clrbits_le32(&phy->pgcr, DDRPHYC_PGCR_DFTCMP);
-	/*disable all bytes*/
-	/* disable automatic power down of dll and ios when disabling a byte
-	 * (to avoid having to add programming and  delay
-	 * for a dll re-lock when later re-enabling a disabled byte lane)
-	 */
-	clrbits_le32(&phy->pgcr, DDRPHYC_PGCR_PDDISDX);
-
-	/* disable all data bytes */
-	clrbits_le32(&phy->dx0gcr, DDRPHYC_DXNGCR_DXEN);
-	clrbits_le32(&phy->dx1gcr, DDRPHYC_DXNGCR_DXEN);
-	clrbits_le32(&phy->dx2gcr, DDRPHYC_DXNGCR_DXEN);
-	clrbits_le32(&phy->dx3gcr, DDRPHYC_DXNGCR_DXEN);
-
-	/* config the bist block */
-	config_BIST(phy);
-
-	for (byte = 0; byte < nb_bytes; byte++) {
-		if (ctrlc()) {
-			sprintf(string, "interrupted at byte %d/%d",
-				byte + 1, nb_bytes);
-			return TEST_FAILED;
-		}
-		/* enable byte x (dxngcr, bit dxen) */
-		setbits_le32(DXNGCR(phy, byte), DDRPHYC_DXNGCR_DXEN);
-
-		/* select the byte lane for comparison of read data */
-		BIST_datx8_sel(phy, byte);
-		for (gsl_idx = 0; gsl_idx <= MAX_GSL_IDX; gsl_idx++) {
-			for (gps_idx = 0; gps_idx <= MAX_GPS_IDX; gps_idx++) {
-				if (ctrlc()) {
-					sprintf(string,
-						"interrupted at byte %d/%d",
-						byte + 1, nb_bytes);
-					return TEST_FAILED;
-				}
-				/* write cfg to dxndqstr */
-				set_r0dgsl_delay(phy, byte, gsl_idx);
-				set_r0dgps_delay(phy, byte, gps_idx);
-
-				BIST_test(phy, byte, &result);
-				success = result.test_result;
-				if (success)
-					dqs_gating[byte][gsl_idx][gps_idx] = 1;
-				itm_soft_reset(phy);
-			}
-		}
-		set_midpoint_read_dqs_gating(phy, byte);
-		/* dummy reads */
-		readl(0xc0000000);
-		readl(0xc0000000);
-	}
-
-	/* re-enable drift compensation */
-	/* setbits_le32(&phy->pgcr, DDRPHYC_PGCR_DFTCMP); */
-	return TEST_PASSED;
-}
-
 /* analyse the dgs gating log table, and determine the midpoint.*/
-static u8 set_midpoint_read_dqs_gating(struct stm32mp1_ddrphy *phy, u8 byte)
+static u8 set_midpoint_read_dqs_gating(struct stm32mp1_ddrphy *phy, u8 byte,
+				       u8 dqs_gating[NUM_BYTES]
+						    [MAX_GSL_IDX + 1]
+						    [MAX_GPS_IDX + 1])
 {
+	/* stores the dqs gate values (gsl index, gps index) */
+	u8 dqs_gate_values[NUM_BYTES][2];
 	u8 gsl_idx, gps_idx = 0;
 	u8 left_bound_idx[2] = {0, 0};
 	u8 right_bound_idx[2] = {0, 0};
@@ -1389,9 +1364,76 @@ static u8 set_midpoint_read_dqs_gating(struct stm32mp1_ddrphy *phy, u8 byte)
 	return !(intermittent || (left_bound_found && right_bound_found));
 }
 
-static void itm_soft_reset(struct stm32mp1_ddrphy *phy)
+static enum test_result read_dqs_gating(struct stm32mp1_ddrctl *ctl,
+					struct stm32mp1_ddrphy *phy,
+					char *string)
 {
-	stm32mp1_ddrphy_init(phy, DDRPHYC_PIR_ITMSRST);
+	/* stores the log of pass/fail */
+	u8 dqs_gating[NUM_BYTES][MAX_GSL_IDX + 1][MAX_GPS_IDX + 1];
+	u8 byte, gsl_idx, gps_idx = 0;
+	struct BIST_result result;
+	u8 success = 0;
+	u8 nb_bytes = get_nb_bytes(ctl);
+
+	memset(dqs_gating, 0x0, sizeof(dqs_gating));
+
+	/*disable dqs drift compensation*/
+	clrbits_le32(&phy->pgcr, DDRPHYC_PGCR_DFTCMP);
+	/*disable all bytes*/
+	/* disable automatic power down of dll and ios when disabling a byte
+	 * (to avoid having to add programming and  delay
+	 * for a dll re-lock when later re-enabling a disabled byte lane)
+	 */
+	clrbits_le32(&phy->pgcr, DDRPHYC_PGCR_PDDISDX);
+
+	/* disable all data bytes */
+	clrbits_le32(&phy->dx0gcr, DDRPHYC_DXNGCR_DXEN);
+	clrbits_le32(&phy->dx1gcr, DDRPHYC_DXNGCR_DXEN);
+	clrbits_le32(&phy->dx2gcr, DDRPHYC_DXNGCR_DXEN);
+	clrbits_le32(&phy->dx3gcr, DDRPHYC_DXNGCR_DXEN);
+
+	/* config the bist block */
+	config_BIST(phy);
+
+	for (byte = 0; byte < nb_bytes; byte++) {
+		if (ctrlc()) {
+			sprintf(string, "interrupted at byte %d/%d",
+				byte + 1, nb_bytes);
+			return TEST_FAILED;
+		}
+		/* enable byte x (dxngcr, bit dxen) */
+		setbits_le32(DXNGCR(phy, byte), DDRPHYC_DXNGCR_DXEN);
+
+		/* select the byte lane for comparison of read data */
+		BIST_datx8_sel(phy, byte);
+		for (gsl_idx = 0; gsl_idx <= MAX_GSL_IDX; gsl_idx++) {
+			for (gps_idx = 0; gps_idx <= MAX_GPS_IDX; gps_idx++) {
+				if (ctrlc()) {
+					sprintf(string,
+						"interrupted at byte %d/%d",
+						byte + 1, nb_bytes);
+					return TEST_FAILED;
+				}
+				/* write cfg to dxndqstr */
+				set_r0dgsl_delay(phy, byte, gsl_idx);
+				set_r0dgps_delay(phy, byte, gps_idx);
+
+				BIST_test(phy, byte, &result);
+				success = result.test_result;
+				if (success)
+					dqs_gating[byte][gsl_idx][gps_idx] = 1;
+				itm_soft_reset(phy);
+			}
+		}
+		set_midpoint_read_dqs_gating(phy, byte, dqs_gating);
+		/* dummy reads */
+		readl(0xc0000000);
+		readl(0xc0000000);
+	}
+
+	/* re-enable drift compensation */
+	/* setbits_le32(&phy->pgcr, DDRPHYC_PGCR_DFTCMP); */
+	return TEST_PASSED;
 }
 
 /****************************************************************

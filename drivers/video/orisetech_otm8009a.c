@@ -302,10 +302,13 @@ static int otm8009a_panel_probe(struct udevice *dev)
 	int ret;
 
 	if (IS_ENABLED(CONFIG_DM_REGULATOR) && priv->reg) {
-		dev_err(dev, "enable regulator '%s'\n", priv->reg->name);
+		dev_dbg(dev, "enable regulator '%s'\n", priv->reg->name);
 		ret = regulator_set_enable(priv->reg, true);
-		if (ret)
+		if (ret) {
+			dev_err(dev, "Regulator : '%s' - can't enable\n",
+				priv->reg->name);
 			return ret;
+		}
 	}
 
 	/* reset panel */

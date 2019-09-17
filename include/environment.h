@@ -268,8 +268,17 @@ extern struct hsearch_data env_htab;
 /* Function that updates CRC of the enironment */
 void env_crc_update(void);
 
+/* allows to set ext4 interface */
+const char *env_ext4_get_intf(void);
+
+/* allows to set ext4 device and partition */
+const char *env_ext4_get_dev_part(void);
+
 /* Look up the variable from the default environment */
 char *env_get_default(const char *name);
+
+/* Returns the best env location for a board */
+enum env_location env_get_location(enum env_operation op, int prio);
 
 /* [re]set to the default environment */
 void set_default_env(const char *s, int flags);

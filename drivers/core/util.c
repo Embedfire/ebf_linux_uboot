@@ -34,6 +34,8 @@ bool dm_fdt_pre_reloc(const void *blob, int offset)
 {
 	if (fdt_getprop(blob, offset, "u-boot,dm-pre-reloc", NULL))
 		return true;
+	if (fdt_getprop(blob, offset, "u-boot,dm-pre-proper", NULL))
+		return true;
 
 #ifdef CONFIG_TPL_BUILD
 	if (fdt_getprop(blob, offset, "u-boot,dm-tpl", NULL))

@@ -14,6 +14,7 @@
 #include <asm/io.h>
 #include <asm/gpio.h>
 #include <linux/iopoll.h>
+#include <watchdog.h>
 
 struct stm32_sdmmc2_plat {
 	struct mmc_config cfg;
@@ -190,7 +191,7 @@ struct stm32_sdmmc2_ctx {
 #define SDMMC_IDMACTRL_IDMAEN		BIT(0)
 
 #define SDMMC_CMD_TIMEOUT		0xFFFFFFFF
-#define SDMMC_BUSYD0END_TIMEOUT_US	1000000
+#define SDMMC_BUSYD0END_TIMEOUT_US	2000000
 
 static void stm32_sdmmc2_start_data(struct stm32_sdmmc2_priv *priv,
 				    struct mmc_data *data,
@@ -432,6 +433,8 @@ static int stm32_sdmmc2_send_cmd(struct udevice *dev, struct mmc_cmd *cmd,
 	u32 cmdat = data ? SDMMC_CMD_CMDTRANS : 0;
 	int ret, retry = 3;
 
+	WATCHDOG_RESET();
+
 retry_cmd:
 	ctx.data_length = 0;
 	ctx.dpsm_abort = false;
@@ -669,6 +672,7 @@ static int stm32_sdmmc2_probe(struct udevice *dev)
 	switch (dev_read_u32_default(dev, "bus-width", 1)) {
 	case 8:
 		cfg->host_caps |= MMC_MODE_8BIT;
+		/* fall through */
 	case 4:
 		cfg->host_caps |= MMC_MODE_4BIT;
 		break;
@@ -692,7 +696,7 @@ clk_free:
 	return ret;
 }
 
-int stm32_sdmmc_bind(struct udevice *dev)
+static int stm32_sdmmc_bind(struct udevice *dev)
 {
 	struct stm32_sdmmc2_plat *plat = dev_get_platdata(dev);
 

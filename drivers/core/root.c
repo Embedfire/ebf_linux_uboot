@@ -223,7 +223,8 @@ static int dm_scan_fdt_live(struct udevice *parent,
 
 	for (np = node_parent->child; np; np = np->sibling) {
 		if (pre_reloc_only &&
-		    !of_find_property(np, "u-boot,dm-pre-reloc", NULL))
+		    !of_find_property(np, "u-boot,dm-pre-reloc", NULL) &&
+		    !of_find_property(np, "u-boot,dm-pre-proper", NULL))
 			continue;
 		if (!of_device_is_available(np)) {
 			pr_debug("   - ignoring disabled device\n");

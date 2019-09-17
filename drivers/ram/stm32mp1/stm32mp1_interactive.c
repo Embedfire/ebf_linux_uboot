@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+ OR BSD-3-Clause
 /*
- * Copyright (C) 2018, STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019, STMicroelectronics - All Rights Reserved
  */
 
 #include <common.h>
@@ -52,7 +52,9 @@ enum ddr_command stm32mp1_get_command(char *cmd, int argc)
 		[DDR_CMD_STEP] = "step",
 		[DDR_CMD_NEXT] = "next",
 		[DDR_CMD_GO] = "go",
+#ifdef CONFIG_STM32MP1_DDR_TESTS
 		[DDR_CMD_TEST] = "test",
+#endif
 #ifdef CONFIG_STM32MP1_DDR_TUNING
 		[DDR_CMD_TUNING] = "tuning",
 #endif
@@ -69,7 +71,9 @@ enum ddr_command stm32mp1_get_command(char *cmd, int argc)
 		[DDR_CMD_STEP] = { 0, 1 },
 		[DDR_CMD_NEXT] = { 0, 0 },
 		[DDR_CMD_GO] = { 0, 0 },
+#ifdef CONFIG_STM32MP1_DDR_TESTS
 		[DDR_CMD_TEST] = { 0, 255 },
+#endif
 #ifdef CONFIG_STM32MP1_DDR_TUNING
 		[DDR_CMD_TUNING] = { 0, 255 },
 #endif
@@ -99,25 +103,32 @@ static void stm32mp1_do_usage(void)
 {
 	const char *usage = {
 		"commands:\n\n"
-		"help                       this message\n"
-		"info  [<param> <val>]      display/change DDR information\n"
-		"freq  [freq]               display/change the DDR frequency\n"
-		"param [type|reg]           print input parameters\n"
-		"param <reg> <val>          edit parameters in step 0\n"
-		"print [type|reg]           dump register\n"
-		"edit <reg> <val>           modify register\n"
-		"       all registers if [type|reg] is absent\n"
-		"       <type> = ctl, phy\n"
-		"                or one category (static, timing, map, perf, cal, dyn)\n"
-		"       <reg> = name of the register\n"
-		"step [n]                   list the step / go to the step <n>\n"
-		"next                       go to the next step\n"
-		"go                         continue SPL execution\n"
-		"reset                      reboot machine\n"
-		"test [help] | <n> [...]    list (with help) or execute test <n>\n"
-#ifdef CONFIG_STM32MP1_DDR_TUNING
-		"tuning [help] | <n> [...] list (with help) or execute test <n>\n"
+		"help                       displays help\n"
+		"info                       displays DDR information\n"
+		"info  <param> <val>        changes DDR information\n"
+		"      with <param> = step, name, size or speed\n"
+		"freq                       displays the DDR PHY frequency in kHz\n"
+		"freq  <freq>               changes the DDR PHY frequency\n"
+		"param [type|reg]           prints input parameters\n"
+		"param <reg> <val>          edits parameters in step 0\n"
+		"print [type|reg]           dumps registers\n"
+		"edit <reg> <val>           modifies one register\n"
+		"step                       lists the available step\n"
+		"step <n>                   go to the step <n>\n"
+		"next                       goes to the next step\n"
+		"go                         continues the U-Boot SPL execution\n"
+		"reset                      reboots machine\n"
+#ifdef CONFIG_STM32MP1_DDR_TESTS
+		"test [help] | <n> [...]    lists (with help) or executes test <n>\n"
 #endif
+#ifdef CONFIG_STM32MP1_DDR_TUNING
+		"tuning [help] | <n> [...]  lists (with help) or execute tuning <n>\n"
+#endif
+		"\nwith for [type|reg]:\n"
+		"  all registers if absent\n"
+		"  <type> = ctl, phy\n"
+		"           or one category (static, timing, map, perf, cal, dyn)\n"
+		"  <reg> = name of the register\n"
 	};
 
 	puts(usage);
@@ -295,6 +306,7 @@ end:
 	return step;
 }
 
+#if defined(CONFIG_STM32MP1_DDR_TESTS) || defined(CONFIG_STM32MP1_DDR_TUNING)
 static const char * const s_result[] = {
 		[TEST_PASSED] = "Pass",
 		[TEST_FAILED] = "Failed",
@@ -349,6 +361,7 @@ static void stm32mp1_ddr_subcmd(struct ddr_info *priv,
 end:
 	printf("Result: %s [%s]\n", s_result[result], string);
 }
+#endif
 
 bool stm32mp1_ddr_interactive(void *priv,
 			      enum stm32mp1_ddr_interact_step step,
@@ -445,11 +458,13 @@ bool stm32mp1_ddr_interactive(void *priv,
 			next_step = stm32mp1_do_step(step, argc, argv);
 			break;
 
+#ifdef CONFIG_STM32MP1_DDR_TESTS
 		case DDR_CMD_TEST:
 			if (!stm32mp1_check_step(step, STEP_DDR_READY))
 				continue;
 			stm32mp1_ddr_subcmd(priv, argc, argv, test, test_nb);
 			break;
+#endif
 
 #ifdef CONFIG_STM32MP1_DDR_TUNING
 		case DDR_CMD_TUNING:

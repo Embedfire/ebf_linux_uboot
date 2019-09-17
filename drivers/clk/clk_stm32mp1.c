@@ -94,6 +94,7 @@ DECLARE_GLOBAL_DATA_PTR;
 #define RCC_PLL4CSGR		0x8A4
 #define RCC_I2C12CKSELR		0x8C0
 #define RCC_I2C35CKSELR		0x8C4
+#define RCC_SPI2S1CKSELR	0x8D8
 #define RCC_UART6CKSELR		0x8E4
 #define RCC_UART24CKSELR	0x8E8
 #define RCC_UART35CKSELR	0x8EC
@@ -171,6 +172,7 @@ DECLARE_GLOBAL_DATA_PTR;
 /* used for ALL PLLNCR registers */
 #define RCC_PLLNCR_PLLON	BIT(0)
 #define RCC_PLLNCR_PLLRDY	BIT(1)
+#define RCC_PLLNCR_SSCG_CTRL	BIT(2)
 #define RCC_PLLNCR_DIVPEN	BIT(4)
 #define RCC_PLLNCR_DIVQEN	BIT(5)
 #define RCC_PLLNCR_DIVREN	BIT(6)
@@ -301,6 +303,8 @@ enum stm32mp1_parent_sel {
 	_STGEN_SEL,
 	_DSI_SEL,
 	_ADC12_SEL,
+	_SPI1_SEL,
+	_RTC_SEL,
 	_PARENT_SEL_NB,
 	_UNKNOWN_SEL = 0xff,
 };
@@ -538,6 +542,7 @@ static const struct stm32mp1_clk_gate stm32mp1_clk_gate[] = {
 	STM32MP1_CLK_SET_CLR(RCC_MP_APB1ENSETR, 23, I2C3_K, _I2C35_SEL),
 	STM32MP1_CLK_SET_CLR(RCC_MP_APB1ENSETR, 24, I2C5_K, _I2C35_SEL),
 
+	STM32MP1_CLK_SET_CLR(RCC_MP_APB2ENSETR, 8, SPI1_K, _SPI1_SEL),
 	STM32MP1_CLK_SET_CLR(RCC_MP_APB2ENSETR, 13, USART6_K, _UART6_SEL),
 
 	STM32MP1_CLK_SET_CLR_F(RCC_MP_APB3ENSETR, 13, VREF, _PCLK3),
@@ -550,6 +555,7 @@ static const struct stm32mp1_clk_gate stm32mp1_clk_gate[] = {
 	STM32MP1_CLK_SET_CLR(RCC_MP_APB4ENSETR, 16, USBPHY_K, _USBPHY_SEL),
 
 	STM32MP1_CLK_SEC_SET_CLR(RCC_MP_APB5ENSETR, 2, I2C4_K, _I2C46_SEL),
+	STM32MP1_CLK_SEC_SET_CLR(RCC_MP_APB5ENSETR, 8, RTCAPB, _PCLK5),
 	STM32MP1_CLK_SEC_SET_CLR(RCC_MP_APB5ENSETR, 20, STGEN_K, _STGEN_SEL),
 
 	STM32MP1_CLK_SET_CLR_F(RCC_MP_AHB2ENSETR, 5, ADC12, _HCLK2),
@@ -574,7 +580,7 @@ static const struct stm32mp1_clk_gate stm32mp1_clk_gate[] = {
 
 	STM32MP1_CLK_SEC_SET_CLR(RCC_MP_AHB5ENSETR, 0, GPIOZ, _UNKNOWN_SEL),
 
-	STM32MP1_CLK_SET_CLR(RCC_MP_AHB6ENSETR, 7, ETHCK, _ETH_SEL),
+	STM32MP1_CLK_SET_CLR(RCC_MP_AHB6ENSETR, 7, ETHCK_K, _ETH_SEL),
 	STM32MP1_CLK_SET_CLR(RCC_MP_AHB6ENSETR, 8, ETHTX, _UNKNOWN_SEL),
 	STM32MP1_CLK_SET_CLR(RCC_MP_AHB6ENSETR, 9, ETHRX, _UNKNOWN_SEL),
 	STM32MP1_CLK_SET_CLR_F(RCC_MP_AHB6ENSETR, 10, ETHMAC, _ACLK),
@@ -585,6 +591,8 @@ static const struct stm32mp1_clk_gate stm32mp1_clk_gate[] = {
 	STM32MP1_CLK_SET_CLR(RCC_MP_AHB6ENSETR, 24, USBH, _UNKNOWN_SEL),
 
 	STM32MP1_CLK(RCC_DBGCFGR, 8, CK_DBG, _UNKNOWN_SEL),
+
+	STM32MP1_CLK(RCC_BDCR, 20, RTC, _RTC_SEL),
 };
 
 static const u8 i2c12_parents[] = {_PCLK1, _PLL4_R, _HSI_KER, _CSI_KER};
@@ -608,6 +616,9 @@ static const u8 usbo_parents[] = {_PLL4_R, _USB_PHY_48};
 static const u8 stgen_parents[] = {_HSI_KER, _HSE_KER};
 static const u8 dsi_parents[] = {_DSI_PHY, _PLL4_P};
 static const u8 adc_parents[] = {_PLL4_R, _CK_PER, _PLL3_Q};
+static const u8 spi_parents[] = {_PLL4_P, _PLL3_Q, _I2S_CKIN, _CK_PER,
+				 _PLL3_R};
+static const u8 rtc_parents[] = {_UNKNOWN_ID, _LSE, _LSI, _HSE};
 
 static const struct stm32mp1_clk_sel stm32mp1_clk_sel[_PARENT_SEL_NB] = {
 	STM32MP1_CLK_PARENT(_I2C12_SEL, RCC_I2C12CKSELR, 0, 0x7, i2c12_parents),
@@ -625,13 +636,17 @@ static const struct stm32mp1_clk_sel stm32mp1_clk_sel[_PARENT_SEL_NB] = {
 	STM32MP1_CLK_PARENT(_SDMMC3_SEL, RCC_SDMMC3CKSELR, 0, 0x7,
 			    sdmmc3_parents),
 	STM32MP1_CLK_PARENT(_ETH_SEL, RCC_ETHCKSELR, 0, 0x3, eth_parents),
-	STM32MP1_CLK_PARENT(_QSPI_SEL, RCC_QSPICKSELR, 0, 0xf, qspi_parents),
-	STM32MP1_CLK_PARENT(_FMC_SEL, RCC_FMCCKSELR, 0, 0xf, fmc_parents),
+	STM32MP1_CLK_PARENT(_QSPI_SEL, RCC_QSPICKSELR, 0, 0x3, qspi_parents),
+	STM32MP1_CLK_PARENT(_FMC_SEL, RCC_FMCCKSELR, 0, 0x3, fmc_parents),
 	STM32MP1_CLK_PARENT(_USBPHY_SEL, RCC_USBCKSELR, 0, 0x3, usbphy_parents),
 	STM32MP1_CLK_PARENT(_USBO_SEL, RCC_USBCKSELR, 4, 0x1, usbo_parents),
 	STM32MP1_CLK_PARENT(_STGEN_SEL, RCC_STGENCKSELR, 0, 0x3, stgen_parents),
 	STM32MP1_CLK_PARENT(_DSI_SEL, RCC_DSICKSELR, 0, 0x1, dsi_parents),
-	STM32MP1_CLK_PARENT(_ADC12_SEL, RCC_ADCCKSELR, 0, 0x1, adc_parents),
+	STM32MP1_CLK_PARENT(_ADC12_SEL, RCC_ADCCKSELR, 0, 0x3, adc_parents),
+	STM32MP1_CLK_PARENT(_SPI1_SEL, RCC_SPI2S1CKSELR, 0, 0x7, spi_parents),
+	STM32MP1_CLK_PARENT(_RTC_SEL, RCC_BDCR, RCC_BDCR_RTCSRC_SHIFT,
+			    (RCC_BDCR_RTCSRC_MASK >> RCC_BDCR_RTCSRC_SHIFT),
+			    rtc_parents),
 };
 
 #ifdef STM32MP1_CLOCK_TREE_INIT
@@ -746,6 +761,8 @@ char * const stm32mp1_clk_parent_sel_name[_PARENT_SEL_NB] = {
 	[_STGEN_SEL] = "STGEN",
 	[_DSI_SEL] = "DSI",
 	[_ADC12_SEL] = "ADC12",
+	[_SPI1_SEL] = "SPI1",
+	[_RTC_SEL] = "RTC",
 };
 
 static const struct stm32mp1_clk_data stm32mp1_data = {
@@ -814,10 +831,11 @@ static int stm32mp1_clk_get_parent(struct stm32mp1_clk_priv *priv,
 	const struct stm32mp1_clk_sel *sel = priv->data->sel;
 	int i;
 	int s, p;
+	unsigned int idx;
 
-	for (i = 0; i < ARRAY_SIZE(stm32mp1_clks); i++)
-		if (stm32mp1_clks[i][0] == id)
-			return stm32mp1_clks[i][1];
+	for (idx = 0; idx < ARRAY_SIZE(stm32mp1_clks); idx++)
+		if (stm32mp1_clks[idx][0] == id)
+			return stm32mp1_clks[idx][1];
 
 	i = stm32mp1_clk_get_id(priv, id);
 	if (i < 0)
@@ -1340,7 +1358,10 @@ static void pll_start(struct stm32mp1_clk_priv *priv, int pll_id)
 {
 	const struct stm32mp1_clk_pll *pll = priv->data->pll;
 
-	writel(RCC_PLLNCR_PLLON, priv->base + pll[pll_id].pllxcr);
+	clrsetbits_le32(priv->base + pll[pll_id].pllxcr,
+			RCC_PLLNCR_DIVPEN | RCC_PLLNCR_DIVQEN |
+			RCC_PLLNCR_DIVREN,
+			RCC_PLLNCR_PLLON);
 }
 
 static int pll_output(struct stm32mp1_clk_priv *priv, int pll_id, int output)
@@ -1459,6 +1480,8 @@ static void pll_csg(struct stm32mp1_clk_priv *priv, int pll_id, u32 *csg)
 		    RCC_PLLNCSGR_SSCG_MODE_MASK);
 
 	writel(pllxcsg, priv->base + pll[pll_id].pllxcsgr);
+
+	setbits_le32(priv->base + pll[pll_id].pllxcr, RCC_PLLNCR_SSCG_CTRL);
 }
 
 static  __maybe_unused int pll_set_rate(struct udevice *dev,
@@ -2052,22 +2075,22 @@ static int stm32mp1_clk_probe(struct udevice *dev)
 		stm32mp1_clk_dump(priv);
 #endif
 
+	gd->cpu_clk = stm32mp1_clk_get(priv, _CK_MPU);
+	gd->bus_clk = stm32mp1_clk_get(priv, _ACLK);
+	/* DDRPHYC father */
+	gd->mem_clk = stm32mp1_clk_get(priv, _PLL2_R);
 #if defined(CONFIG_DISPLAY_CPUINFO)
 	if (gd->flags & GD_FLG_RELOC) {
 		char buf[32];
 
 		printf("Clocks:\n");
-		printf("- MPU : %s MHz\n",
-		       strmhz(buf, stm32mp1_clk_get(priv, _CK_MPU)));
+		printf("- MPU : %s MHz\n", strmhz(buf, gd->cpu_clk));
 		printf("- MCU : %s MHz\n",
 		       strmhz(buf, stm32mp1_clk_get(priv, _CK_MCU)));
-		printf("- AXI : %s MHz\n",
-		       strmhz(buf, stm32mp1_clk_get(priv, _ACLK)));
+		printf("- AXI : %s MHz\n", strmhz(buf, gd->bus_clk));
 		printf("- PER : %s MHz\n",
 		       strmhz(buf, stm32mp1_clk_get(priv, _CK_PER)));
-		/* DDRPHYC father */
-		printf("- DDR : %s MHz\n",
-		       strmhz(buf, stm32mp1_clk_get(priv, _PLL2_R)));
+		printf("- DDR : %s MHz\n", strmhz(buf, gd->mem_clk));
 	}
 #endif /* CONFIG_DISPLAY_CPUINFO */
 #endif

@@ -6,7 +6,8 @@
 obj-y += stm32mp1_ram.o
 obj-y += stm32mp1_ddr.o
 
-obj-$(CONFIG_STM32MP1_DDR_INTERACTIVE) += stm32mp1_interactive.o stm32mp1_tests.o
+obj-$(CONFIG_STM32MP1_DDR_INTERACTIVE) += stm32mp1_interactive.o
+obj-$(CONFIG_STM32MP1_DDR_TESTS) += stm32mp1_tests.o
 obj-$(CONFIG_STM32MP1_DDR_TUNING) += stm32mp1_tuning.o
 
 ifneq ($(DDR_INTERACTIVE),)

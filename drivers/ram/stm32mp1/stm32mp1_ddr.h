@@ -26,7 +26,6 @@ struct stm32mp1_ddrphy;
  * @ctl: DDR controleur base address
  * @clk: DDR clock
  * @phy: DDR PHY base address
- * @pwr: pwr base address
  * @rcc: rcc base address
  */
 struct ddr_info {
@@ -35,7 +34,6 @@ struct ddr_info {
 	struct clk clk;
 	struct stm32mp1_ddrctl *ctl;
 	struct stm32mp1_ddrphy *phy;
-	void *pwr;
 	u32 rcc;
 };
 

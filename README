@@ -2192,6 +2192,9 @@ The following options need to be configured:
 		CONFIG_SF_DEFAULT_MODE 		(see include/spi.h)
 		CONFIG_SF_DEFAULT_SPEED		in Hz
 
+		In case of DT boot, SPI don't read default speed and mode
+		from CONFIG_*, but from platdata values computed from available
+		DT node
 
 - TFTP Fixed UDP Port:
 		CONFIG_TFTP_PORT

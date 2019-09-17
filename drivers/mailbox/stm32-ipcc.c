@@ -127,7 +127,7 @@ static int stm32_ipcc_probe(struct udevice *dev)
 
 	/* proc_id */
 	cell = dev_read_prop(dev, "st,proc_id", &len);
-	if (len < sizeof(fdt32_t)) {
+	if (sizeof(fdt32_t) - len > 0) {
 		dev_dbg(dev, "Missing st,proc_id\n");
 		return -EINVAL;
 	}

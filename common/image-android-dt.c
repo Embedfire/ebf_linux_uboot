@@ -153,4 +153,46 @@ void android_dt_print_contents(ulong hdr_addr)
 		unmap_sysmem(fdt);
 	}
 }
+
 #endif
+
+/**
+ * Get dtb index based on board identifier and revision.
+ *
+ * @param hdr_addr Start address of DT image
+ * @param board_id board identifier
+ * @param board_rev board revision (0 if not used)
+ *
+ * @return index in dt table
+ */
+int android_dt_get_index(ulong hdr_addr, u32 board_id, u32 board_rev)
+{
+	const struct dt_table_header *hdr;
+	u32 entry_count, entries_offset, entry_size;
+	u32 i;
+	int ret = -1;
+
+	hdr = map_sysmem(hdr_addr, sizeof(*hdr));
+	entry_count = fdt32_to_cpu(hdr->dt_entry_count);
+	entries_offset = fdt32_to_cpu(hdr->dt_entries_offset);
+	entry_size = fdt32_to_cpu(hdr->dt_entry_size);
+	unmap_sysmem(hdr);
+
+	for (i = 0; i < entry_count; ++i) {
+		const ulong e_addr = hdr_addr + entries_offset + i * entry_size;
+		const struct dt_table_entry *e;
+
+		e = map_sysmem(e_addr, sizeof(*e));
+
+		if ((fdt32_to_cpu(e->id) == board_id) &&
+		    (board_rev == 0 || fdt32_to_cpu(e->rev) == board_rev)) {
+			ret = i;
+			unmap_sysmem(e);
+			break;
+		}
+
+		unmap_sysmem(e);
+	}
+
+	return ret;
+}

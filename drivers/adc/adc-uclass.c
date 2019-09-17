@@ -277,13 +277,8 @@ static int adc_vdd_platdata_update(struct udevice *dev)
 	 * will bind before its supply regulator device, then the below 'get'
 	 * will return an error.
 	 */
-	if (!uc_pdata->vdd_supply) {
-		/* Only get vdd_supply once */
-		ret = device_get_supply_regulator(dev, "vdd-supply",
-						  &uc_pdata->vdd_supply);
-		if (ret)
-			return ret;
-	}
+	if (!uc_pdata->vdd_supply)
+		return 0;
 
 	ret = regulator_get_value(uc_pdata->vdd_supply);
 	if (ret < 0)
@@ -299,12 +294,8 @@ static int adc_vss_platdata_update(struct udevice *dev)
 	struct adc_uclass_platdata *uc_pdata = dev_get_uclass_platdata(dev);
 	int ret;
 
-	if (!uc_pdata->vss_supply) {
-		ret = device_get_supply_regulator(dev, "vss-supply",
-						  &uc_pdata->vss_supply);
-		if (ret)
-			return ret;
-	}
+	if (!uc_pdata->vss_supply)
+		return 0;
 
 	ret = regulator_get_value(uc_pdata->vss_supply);
 	if (ret < 0)

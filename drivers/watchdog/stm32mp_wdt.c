@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0+ OR BSD-3-Clause
 /*
- * Copyright (C) 2018, STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019, STMicroelectronics - All Rights Reserved
  */
 
 #include <common.h>
 #include <clk.h>
 #include <dm.h>
-#include <regmap.h>
 #include <syscon.h>
-#include <watchdog.h>
+#include <wdt.h>
 #include <asm/io.h>
-#include <asm/arch/stm32.h>
+#include <linux/iopoll.h>
 
 /* IWDG registers */
 #define IWDG_KR		0x00	/* Key register */
@@ -29,35 +28,77 @@
 /* IWDG_RLR register values */
 #define RLR_MAX		0xFFF	/* Max value supported by reload register */
 
-static fdt_addr_t stm32mp_wdt_base
-	__attribute__((section(".data"))) = FDT_ADDR_T_NONE;
+/* IWDG_SR register bit values */
+#define SR_PVU		BIT(0)	/* Watchdog prescaler value update */
+#define SR_RVU		BIT(1)	/* Watchdog counter reload value update */
 
-void hw_watchdog_reset(void)
+#define DEFAULT_TIMEOUT_SECS	32	/* default timeout */
+
+struct stm32mp_wdt_priv {
+	fdt_addr_t base;		/* registers addr in physical memory */
+	u32 timeout;			/* timeout in seconds */
+	unsigned long wdt_clk_rate;	/* Watchdog dedicated clock rate */
+};
+
+static int stm32mp_wdt_reset(struct udevice *dev)
 {
-	if (stm32mp_wdt_base != FDT_ADDR_T_NONE)
-		writel(KR_KEY_RELOAD, stm32mp_wdt_base + IWDG_KR);
+	struct stm32mp_wdt_priv *priv = dev_get_priv(dev);
+
+	writel(KR_KEY_RELOAD, priv->base + IWDG_KR);
+
+	return 0;
 }
 
-void hw_watchdog_init(void)
+static int stm32mp_wdt_start(struct udevice *dev, u64 timeout, ulong flags)
 {
-	struct regmap *map;
+	struct stm32mp_wdt_priv *priv = dev_get_priv(dev);
+	int reload;
+	u32 val;
+	int ret;
 
-	map = syscon_get_regmap_by_driver_data(STM32MP_SYSCON_IWDG);
-	if (!IS_ERR(map))
-		stm32mp_wdt_base = map->ranges[0].start;
-	else
-		printf("%s: iwdg init error", __func__);
+	/* Prescaler fixed to 256 */
+	reload = (priv->timeout * 1000) * priv->wdt_clk_rate / 256;
+	if (reload > RLR_MAX + 1)
+		/* Force to max watchdog counter reload value */
+		reload = RLR_MAX + 1;
+	else if (!reload)
+		/* Force to min watchdog counter reload value */
+		reload = priv->wdt_clk_rate / 256;
+
+	/* Set prescaler & reload registers */
+	writel(KR_KEY_EWA, priv->base + IWDG_KR);
+	writel(PR_256, priv->base + IWDG_PR);
+	writel(reload - 1, priv->base + IWDG_RLR);
+
+	/* Enable watchdog */
+	writel(KR_KEY_ENABLE, priv->base + IWDG_KR);
+
+	/* Wait for the registers to be updated */
+	ret = readl_poll_timeout(priv->base + IWDG_SR, val,
+				 val & (SR_PVU | SR_RVU), CONFIG_SYS_HZ);
+
+	if (ret < 0) {
+		pr_err("Updating IWDG registers timeout");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
 }
 
 static int stm32mp_wdt_probe(struct udevice *dev)
 {
-	struct regmap *map = syscon_get_regmap(dev);
+	struct stm32mp_wdt_priv *priv = dev_get_priv(dev);
 	struct clk clk;
-	int ret, reload;
-	u32 time_start;
-	ulong regmap_base = map->ranges[0].start;
+	int ret;
 
 	debug("IWDG init\n");
+
+	priv->base = devfdt_get_addr(dev);
+	if (priv->base == FDT_ADDR_T_NONE)
+		return -EINVAL;
+
+	priv->timeout = dev_read_u32_default(dev, "timeout-sec",
+					     DEFAULT_TIMEOUT_SECS);
 
 	/* Enable clock */
 	ret = clk_get_by_name(dev, "pclk", &clk);
@@ -73,47 +114,28 @@ static int stm32mp_wdt_probe(struct udevice *dev)
 	if (ret)
 		return ret;
 
-	/* Prescaler fixed to 256 */
-	reload = CONFIG_STM32MP_WATCHDOG_TIMEOUT_SECS *
-		 clk_get_rate(&clk) / 256;
-	if (reload > RLR_MAX + 1)
-		/* Force to max watchdog counter reload value */
-		reload = RLR_MAX + 1;
-	else if (!reload)
-		/* Force to min watchdog counter reload value */
-		reload = clk_get_rate(&clk) / 256;
-
-	/* Enable watchdog */
-	writel(KR_KEY_ENABLE, regmap_base + IWDG_KR);
-
-	/* Set prescaler & reload registers */
-	writel(KR_KEY_EWA, regmap_base + IWDG_KR);
-	writel(PR_256, regmap_base + IWDG_PR);
-	writel(reload - 1, regmap_base + IWDG_RLR);
-
-	/* Wait for the registers to be updated */
-	time_start = get_timer(0);
-	while (readl(regmap_base + IWDG_SR)) {
-		if (get_timer(time_start) > CONFIG_SYS_HZ) {
-			pr_err("Updating IWDG registers timeout");
-			return -ETIMEDOUT;
-		}
-	}
+	priv->wdt_clk_rate = clk_get_rate(&clk);
 
 	debug("IWDG init done\n");
 
 	return 0;
 }
 
+static const struct wdt_ops stm32mp_wdt_ops = {
+	.start = stm32mp_wdt_start,
+	.reset = stm32mp_wdt_reset,
+};
+
 static const struct udevice_id stm32mp_wdt_match[] = {
-	{ .compatible = "st,stm32mp1-iwdg",
-	  .data = STM32MP_SYSCON_IWDG },
+	{ .compatible = "st,stm32mp1-iwdg" },
 	{ /* sentinel */ }
 };
 
 U_BOOT_DRIVER(stm32mp_wdt) = {
 	.name = "stm32mp-wdt",
-	.id = UCLASS_SYSCON,
+	.id = UCLASS_WDT,
 	.of_match = stm32mp_wdt_match,
+	.priv_auto_alloc_size = sizeof(struct stm32mp_wdt_priv),
 	.probe = stm32mp_wdt_probe,
+	.ops = &stm32mp_wdt_ops,
 };

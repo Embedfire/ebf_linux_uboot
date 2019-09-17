@@ -167,6 +167,7 @@ unsigned char *dfu_get_buf(struct dfu_entity *dfu);
 unsigned char *dfu_free_buf(void);
 unsigned long dfu_get_buf_size(void);
 bool dfu_usb_get_reset(void);
+void dfu_initiated_callback(struct dfu_entity *dfu);
 
 int dfu_read(struct dfu_entity *de, void *buf, int size, int blk_seq_num);
 int dfu_write(struct dfu_entity *de, void *buf, int size, int blk_seq_num);

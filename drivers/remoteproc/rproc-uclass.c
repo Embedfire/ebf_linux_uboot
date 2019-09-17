@@ -449,10 +449,10 @@ static int rproc_load_elf_image(struct udevice *dev, unsigned long addr,
 		if (phdr->p_filesz != phdr->p_memsz)
 			memset(dst + phdr->p_filesz, 0x00,
 			       phdr->p_memsz - phdr->p_filesz);
-		flush_cache(rounddown((int)dst, ARCH_DMA_MINALIGN),
-			    roundup((int)dst + phdr->p_filesz,
+		flush_cache(rounddown((unsigned long)dst, ARCH_DMA_MINALIGN),
+			    roundup((unsigned long)dst + phdr->p_filesz,
 				    ARCH_DMA_MINALIGN) -
-			    rounddown((int)dst, ARCH_DMA_MINALIGN));
+			    rounddown((unsigned long)dst, ARCH_DMA_MINALIGN));
 		++phdr;
 	}
 
@@ -564,10 +564,10 @@ static int rproc_elf_find_load_rsc_table(struct udevice *dev,
 	src = (void *)fw_addr + shdr->sh_offset;
 
 	memcpy(dst, src, shdr->sh_size);
-	flush_cache(rounddown((int)dst, ARCH_DMA_MINALIGN),
-		    roundup((int)dst + shdr->sh_size,
+	flush_cache(rounddown((unsigned long)dst, ARCH_DMA_MINALIGN),
+		    roundup((unsigned long)dst + shdr->sh_size,
 			    ARCH_DMA_MINALIGN) -
-		    rounddown((int)dst, ARCH_DMA_MINALIGN));
+		    rounddown((unsigned long)dst, ARCH_DMA_MINALIGN));
 
 	return 0;
 }

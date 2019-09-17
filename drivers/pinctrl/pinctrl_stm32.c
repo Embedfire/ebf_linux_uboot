@@ -4,6 +4,7 @@
 #include <asm/arch/gpio.h>
 #include <asm/gpio.h>
 #include <asm/io.h>
+#include <dm/lists.h>
 #include <dm/pinctrl.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -135,7 +136,7 @@ static struct udevice *stm32_pinctrl_get_gpio_dev(struct udevice *dev,
 			 */
 			*idx = stm32_offset_to_index(gpio_bank->gpio_dev,
 						     selector - pin_count);
-			if (*idx < 0)
+			if (IS_ERR_VALUE(*idx))
 				return NULL;
 
 			return gpio_bank->gpio_dev;
@@ -211,20 +212,21 @@ static int stm32_pinctrl_get_pin_muxing(struct udevice *dev,
 
 	return 0;
 }
+
 #endif
 
-int stm32_pinctrl_probe(struct udevice *dev)
+static int stm32_pinctrl_probe(struct udevice *dev)
 {
 	struct stm32_pinctrl_priv *priv = dev_get_priv(dev);
-	int err;
-
-	/* hwspinlock property is optional, just log the error */
-	err = hwspinlock_get_by_index(dev, 0, &priv->hws);
-	if (err)
-		debug("%s: hwspinlock_get_by_index may have failed (%d)\n",
-		      __func__, err);
+	int ret;
 
 	INIT_LIST_HEAD(&priv->gpio_dev);
+
+	/* hwspinlock property is optional, just log the error */
+	ret = hwspinlock_get_by_index(dev, 0, &priv->hws);
+	if (ret)
+		debug("%s: hwspinlock_get_by_index may have failed (%d)\n",
+		      __func__, ret);
 
 	return 0;
 }
@@ -234,7 +236,7 @@ static int stm32_gpio_config(struct gpio_desc *desc,
 {
 	struct stm32_gpio_priv *priv = dev_get_priv(desc->dev);
 	struct stm32_gpio_regs *regs = priv->regs;
-	struct stm32_pinctrl_priv *pinctrl_priv;
+	struct stm32_pinctrl_priv *ctrl_priv;
 	int ret;
 	u32 index;
 
@@ -242,9 +244,8 @@ static int stm32_gpio_config(struct gpio_desc *desc,
 	    ctl->pupd > 2 || ctl->speed > 3)
 		return -EINVAL;
 
-	pinctrl_priv = dev_get_priv(dev_get_parent(desc->dev));
-
-	ret = hwspinlock_lock_timeout(&pinctrl_priv->hws, 10);
+	ctrl_priv = dev_get_priv(dev_get_parent(desc->dev));
+	ret = hwspinlock_lock_timeout(&ctrl_priv->hws, 10);
 	if (ret == -ETIME) {
 		dev_err(desc->dev, "HWSpinlock timeout\n");
 		return ret;
@@ -264,7 +265,7 @@ static int stm32_gpio_config(struct gpio_desc *desc,
 	index = desc->offset;
 	clrsetbits_le32(&regs->otyper, OTYPE_MSK << index, ctl->otype << index);
 
-	hwspinlock_unlock(&pinctrl_priv->hws);
+	hwspinlock_unlock(&ctrl_priv->hws);
 
 	return 0;
 }
@@ -327,8 +328,8 @@ static int stm32_pinctrl_config(int offset)
 	int rv, len;
 
 	/*
-	 * check for "pinmux" property in each subnode of pin controller
-	 * phandle "pinctrl-0" (e.g. pins1 and pins2 for usart1)
+	 * check for "pinmux" property in each subnode (e.g. pins1 and pins2 for
+	 * usart1) of pin controller phandle "pinctrl-0"
 	 */
 	fdt_for_each_subnode(offset, gd->fdt_blob, offset) {
 		struct stm32_gpio_dsc gpio_dsc;
@@ -358,6 +359,35 @@ static int stm32_pinctrl_config(int offset)
 			if (rv)
 				return rv;
 		}
+	}
+
+	return 0;
+}
+
+static int stm32_pinctrl_bind(struct udevice *dev)
+{
+	ofnode node;
+	const char *name;
+	int ret;
+
+	dev_for_each_subnode(node, dev) {
+		debug("%s: bind %s\n", __func__, ofnode_get_name(node));
+
+		ofnode_get_property(node, "gpio-controller", &ret);
+		if (ret < 0)
+			continue;
+		/* Get the name of each gpio node */
+		name = ofnode_get_name(node);
+		if (!name)
+			return -EINVAL;
+
+		/* Bind each gpio node */
+		ret = device_bind_driver_to_node(dev, "gpio_stm32",
+						 name, node, NULL);
+		if (ret)
+			return ret;
+
+		debug("%s: bind %s\n", __func__, name);
 	}
 
 	return 0;
@@ -431,7 +461,7 @@ U_BOOT_DRIVER(pinctrl_stm32) = {
 	.id			= UCLASS_PINCTRL,
 	.of_match		= stm32_pinctrl_ids,
 	.ops			= &stm32_pinctrl_ops,
-	.bind			= dm_scan_fdt_dev,
+	.bind			= stm32_pinctrl_bind,
 	.probe			= stm32_pinctrl_probe,
 	.priv_auto_alloc_size	= sizeof(struct stm32_pinctrl_priv),
 };

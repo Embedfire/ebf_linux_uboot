@@ -15,7 +15,7 @@
 #include <linux/printk.h>
 #include <linux/psci.h>
 
-psci_fn *invoke_psci_fn;
+psci_fn *invoke_psci_fn __attribute__((section(".data")));
 
 static unsigned long __invoke_psci_fn_hvc(unsigned long function_id,
 			unsigned long arg0, unsigned long arg1,

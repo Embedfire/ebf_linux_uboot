@@ -48,7 +48,19 @@
 /*
  * Env parameters
  */
-#define CONFIG_ENV_SIZE				SZ_4K
+#define CONFIG_ENV_OVERWRITE
+#define CONFIG_ENV_SIZE				SZ_8K
+
+#if defined(CONFIG_ENV_IS_IN_UBI)
+#define	CONFIG_ENV_UBI_PART			"UBI"
+#define	CONFIG_ENV_UBI_VOLUME			"uboot_config"
+#define CONFIG_ENV_UBI_VOLUME_REDUND		"uboot_config_r"
+#endif
+
+#if defined(CONFIG_ENV_IS_IN_SPI_FLASH)
+#define	CONFIG_ENV_SECT_SIZE			SZ_256K
+#define	CONFIG_ENV_OFFSET			0x00280000
+#endif
 
 /* ATAGs */
 #define CONFIG_CMDLINE_TAG
@@ -90,9 +102,6 @@
 #define CONFIG_SYS_NAND_ONFI_DETECTION
 #define CONFIG_SYS_MAX_NAND_DEVICE	1
 
-/* SPI nand */
-#define CONFIG_SYS_MAX_NAND_DEVICE	1
-
 /* SPI FLASH support */
 #if defined(CONFIG_SPL_BUILD)
 #define CONFIG_SYS_SPI_U_BOOT_OFFS	0x80000
@@ -130,33 +139,102 @@
 	func(MMC, mmc, 2) \
 	func(PXE, pxe, na)
 
-#include <config_distro_bootcmd.h>
+/*
+ * bootcmd for stm32mp1:
+ *    CONFIG_BOOTCOMMAND="run bootcmd_stm32mp"
+ * for serial/usb: execute the stm32prog command
+ * for mmc boot (eMMC, SD card), boot only on the same device
+ * for nand boot, boot with on ubifs partition on nand
+ * for nor boot, use the default order
+ */
+#define CONFIG_PREBOOT
 
-#define CONFIG_PREBOOT \
-	"echo \"Boot over ${boot_device}${boot_instance}!\"; " \
-	"if test ${boot_device} = serial; then " \
-		"stm32prog serial ${boot_instance}; " \
-	"else if test ${boot_device} = usb; then " \
-		"stm32prog usb ${boot_instance}; " \
+#define STM32MP_BOOTCMD "bootcmd_stm32mp=" \
+	"echo \"Boot over ${boot_device}${boot_instance}!\";" \
+	"if test ${boot_device} = serial || test ${boot_device} = usb;" \
+	"then stm32prog ${boot_device} ${boot_instance}; " \
 	"else " \
-		"if test ${boot_device} = mmc; then " \
-			"env set boot_targets \"mmc${boot_instance}\"; "\
-		"else if test ${boot_device} = nand; then " \
-			"env set boot_targets \"ubifs0\"; "\
-	"fi; fi; fi; fi;"
+		"run env_check;" \
+		"if test ${boot_device} = mmc;" \
+		"then env set boot_targets \"mmc${boot_instance}\"; fi;" \
+		"if test ${boot_device} = nand;" \
+		"then env set boot_targets ubifs0; fi;" \
+		"run distro_bootcmd;" \
+	"fi;\0"
+
+/* DTIMG command added only for Android distribution */
+#ifdef CONFIG_CMD_DTIMG
+/*
+ * bootcmd for android on MMC:
+ *    CONFIG_BOOTCOMMAND="run bootcmd_android"
+ * overidde DISTRO script "mmc_boot" to boot android on mmc
+ * using system_${suffix} partition (with "_a") by default
+ * - display splash screen
+ * - load device tree form dtimg
+ * - load kernel and set bootargs
+ * - start kernel
+ */
+
+#define STM32MP_ANDROID \
+	"suffix=a\0" \
+	"dtimg_addr=0xc4500000\0" \
+	"android_mmc_splash="\
+		"if part start mmc ${devnum} splash splash_start && " \
+		   "part size mmc ${devnum} splash splash_size;"\
+		"then " \
+		   "mmc read ${splashimage} ${splash_start} ${splash_size};" \
+		   "cls; bmp display ${splashimage} m m;" \
+		"fi\0" \
+	"android_mmc_fdt="\
+		"if part start mmc ${devnum} dt_${suffix} dt_start &&" \
+		   "part size mmc ${devnum} dt_${suffix} dt_size;"\
+		"then " \
+		   "mmc read ${dtimg_addr} ${dt_start} ${dt_size};" \
+		   "dtimg getindex ${dtimg_addr} ${board_id} ${board_rev}" \
+		     " dt_index;" \
+		   "dtimg start ${dtimg_addr} ${dt_index} fdt_addr_r;"\
+		"fi\0" \
+	"android_mmc_kernel="\
+		"if part start mmc ${devnum} boot_${suffix} boot_start &&" \
+		   "part size mmc ${devnum} boot_${suffix} boot_size;"\
+		"then " \
+		   "mmc read ${kernel_addr_r} ${boot_start} ${boot_size};" \
+		   "part nb mmc ${devnum} system_${suffix} rootpart_nb;" \
+		   "env set bootargs" \
+		     "root=/dev/mmcblk${devnum}p${rootpart_nb} " \
+		     "androidboot.serialno=${serial#} " \
+		     "androidboot.slot_suffix=_${suffix};"\
+		"fi\0" \
+	"android_mmc_boot="\
+		"mmc dev ${devnum};"\
+		"run android_mmc_splash;" \
+		"run android_mmc_fdt;" \
+		"run android_mmc_kernel;" \
+		"bootm ${kernel_addr_r} - ${fdt_addr_r};\0" \
+	"bootcmd_android=" \
+		"env set mmc_boot run android_mmc_boot;" \
+		"run bootcmd_stm32mp\0"
+
+#else
+#define STM32MP_ANDROID
+#endif/* CONFIG_CMD_DTIMG */
+
+#include <config_distro_bootcmd.h>
 
 #ifdef CONFIG_STM32MP1_OPTEE
 #define CONFIG_SYS_MEM_TOP_HIDE			SZ_32M
 /* with OPTEE: define specific MTD partitions = teeh, teed, teex */
 #define STM32MP_MTDPARTS \
-	"mtdparts_nor0=256k(fsbl1),256k(fsbl2),2m(ssbl),256k(logo),256k(teeh),256k(teed),256k(teex),-(nor_user)\0" \
-	"mtdparts_nand0=2m(fsbl),2m(ssbl1),2m(ssbl2),512k(teeh),512k(teed),512k(teex),-(UBI);\0"
+	"mtdparts_nor0=256k(fsbl1),256k(fsbl2),2m(ssbl),256k(u-boot-env),256k(teeh),256k(teed),256k(teex),-(nor_user)\0" \
+	"mtdparts_nand0=2m(fsbl),2m(ssbl1),2m(ssbl2),512k(teeh),512k(teed),512k(teex),-(UBI)\0" \
+	"mtdparts_spi-nand0=2m(fsbl),2m(ssbl1),2m(ssbl2),512k(teeh),512k(teed),512k(teex),-(UBI)\0" \
 
 #else /* CONFIG_STM32MP1_OPTEE */
 
 #define STM32MP_MTDPARTS \
-	"mtdparts_nor0=256k(fsbl1),256k(fsbl2),2m(ssbl),256k(logo),-(nor_user)\0" \
-	"mtdparts_nand0=2m(fsbl),2m(ssbl1),2m(ssbl2),-(UBI)\0"
+	"mtdparts_nor0=256k(fsbl1),256k(fsbl2),2m(ssbl),256k(u-boot-env),-(nor_user)\0" \
+	"mtdparts_nand0=2m(fsbl),2m(ssbl1),2m(ssbl2),-(UBI)\0" \
+	"mtdparts_spi-nand0=2m(fsbl),2m(ssbl1),2m(ssbl2),-(UBI)\0"
 
 #endif /* CONFIG_STM32MP1_OPTEE */
 
@@ -181,7 +259,12 @@
 	"bootlimit=0\0" \
 	"altbootcmd=run bootcmd\0" \
 	"usb_pgood_delay=2000\0" \
+	"env_default=1\0"				\
+	"env_check=if test $env_default -eq 1;"\
+		" then env set env_default 0;env save;fi\0" \
+	STM32MP_BOOTCMD \
 	STM32MP_MTDPARTS \
+	STM32MP_ANDROID \
 	BOOTENV \
 	"boot_net_usb_start=true\0"
 
