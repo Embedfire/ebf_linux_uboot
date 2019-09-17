@@ -54,7 +54,3 @@
 		u-boot,dm-spl;
 	};
 };
-
-&usbotg_hs {
-	g-tx-fifo-size = <576>;
-};

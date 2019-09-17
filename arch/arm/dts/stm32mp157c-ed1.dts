@@ -8,7 +8,6 @@
 #include "stm32mp157c.dtsi"
 #include "stm32mp157c-m4-srm.dtsi"
 #include "stm32mp157caa-pinctrl.dtsi"
-#include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/mfd/st,stpmic1.h>
 
 / {
@@ -64,8 +63,8 @@
 			no-map;
 		};
 
-		gpu_reserved: gpu@f8000000 {
-			reg = <0xf8000000 0x8000000>;
+		gpu_reserved: gpu@e8000000 {
+			reg = <0xe8000000 0x8000000>;
 			no-map;
 		};
 	};
@@ -188,7 +187,7 @@
 
 		st,main-control-register = <0x04>;
 		st,vin-control-register = <0xc0>;
-		st,usb-control-register = <0x30>;
+		st,usb-control-register = <0x20>;
 
 		regulators {
 			compatible = "st,stpmic1-regulators";
@@ -337,12 +336,16 @@
 	interrupt-parent = <&exti>;
 	interrupts = <68 1>;
 	interrupt-names = "wdg";
+	wakeup-source;
 	recovery;
 	status = "okay";
 };
 
 &pwr {
-	pwr-supply = <&vdd>;
+	pwr-regulators {
+		vdd-supply = <&vdd>;
+		vdd_3v3_usbfs-supply = <&vdd_usb>;
+	};
 };
 
 &rng1 {

@@ -295,14 +295,14 @@
 		m4_m_can1: can@4400e000 {
 			compatible = "rproc-srm-dev";
 			reg = <0x4400e000>, <0x44011000>;
-			clocks = <&rcc CK_HSE>, <&rcc FDCAN_K>;
+			clocks = <&rcc FDCAN>, <&rcc FDCAN_K>;
 			clock-names = "hclk", "cclk";
 			status = "disabled";
 		};
 		m4_m_can2: can@4400f000 {
 			compatible = "rproc-srm-dev";
 			reg = <0x4400f000>, <0x44011000>;
-			clocks = <&rcc CK_HSE>, <&rcc FDCAN_K>;
+			clocks = <&rcc FDCAN>, <&rcc FDCAN_K>;
 			clock-names = "hclk", "cclk";
 			status = "disabled";
 		};

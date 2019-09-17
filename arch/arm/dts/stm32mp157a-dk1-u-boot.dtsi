@@ -33,19 +33,16 @@
 	};
 };
 
+&adc {
+	status = "okay";
+};
+
 &clk_hse {
 	st,digbypass;
 };
 
 &i2c4 {
 	u-boot,dm-pre-reloc;
-
-	stusb1600: typec@28 {
-		#extcon-cells = <0>;
-		compatible = "st,stusb1600";
-		reg = <0x28>;
-		status = "okay";
-	};
 };
 
 &i2c4_pins_a {
@@ -112,7 +109,7 @@
 		CLK_UART6_HSI
 		CLK_UART78_HSI
 		CLK_SPDIF_PLL4P
-		CLK_FDCAN_PLL4Q
+		CLK_FDCAN_PLL4R
 		CLK_SAI1_PLL3Q
 		CLK_SAI2_PLL3Q
 		CLK_SAI3_PLL3Q
@@ -177,14 +174,7 @@
 	};
 	pins2 {
 		u-boot,dm-pre-reloc;
+		/* pull-up on rx to avoid floating level */
+		bias-pull-up;
 	};
-};
-
-&usbotg_hs {
-	usb1600;
-	hnp-srp-disable;
-};
-
-&v3v3 {
-	regulator-always-on;
 };
