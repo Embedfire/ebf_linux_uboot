@@ -24,8 +24,7 @@ u32 spl_boot_device(void)
 {
 	u32 boot_mode;
 
-	boot_mode = (readl(TAMP_BOOT_CONTEXT) & TAMP_BOOT_MODE_MASK) >>
-		    TAMP_BOOT_MODE_SHIFT;
+	boot_mode = get_bootmode();
 
 	switch (boot_mode) {
 	case BOOT_FLASH_SD_1:
@@ -50,6 +49,7 @@ u32 spl_boot_device(void)
 	case BOOT_FLASH_NOR_QSPI:
 		return BOOT_DEVICE_SPI;
 	}
+
 	return BOOT_DEVICE_MMC1;
 }
 
@@ -118,6 +118,8 @@ void board_init_f(ulong dummy)
 
 	/* enable console uart printing */
 	preloader_console_init();
+
+	watchdog_start();
 
 	ret = uclass_get_device(UCLASS_RAM, 0, &dev);
 	if (ret) {

@@ -44,8 +44,6 @@
 /* enumerated used to identify the SYSCON driver instance */
 enum {
 	STM32MP_SYSCON_UNKNOWN,
-	STM32MP_SYSCON_ETZPC,
-	STM32MP_SYSCON_IWDG,
 	STM32MP_SYSCON_PWR,
 	STM32MP_SYSCON_STGEN,
 	STM32MP_SYSCON_SYSCFG,
@@ -125,10 +123,6 @@ enum forced_boot_mode {
 #define STM32_BSEC_OTP(id)		(STM32_BSEC_OTP_OFFSET + (id) * 4)
 
 #define BSEC_OTP_BOARD	59
-
-#if CONFIG_STM32_ETZPC
-int stm32_fdt_fixup_etzpc(void *fdt);
-#endif
 
 #endif /* __ASSEMBLY__*/
 #endif /* _MACH_STM32_H_ */

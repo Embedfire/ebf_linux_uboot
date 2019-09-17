@@ -17,6 +17,9 @@
 
 #define BIT(nr)				(1 << (nr))
 
+#define BSEC_OTP_DATA0_ADDR		0x5C005200
+#define BSEC_OTP_DATA0_CLOSED		BIT(6)
+
 #define DBG_DSCR_ADDR			0x500D0088
 #define DBG_DSCR_HDBGEN			BIT(14)
 
@@ -45,6 +48,15 @@ ENTRY(save_boot_params)
 	 * r8, and then r7 and so on. By this way, debug will be done in
 	 * conditions closed to the initial context.
 	 */
+
+	/*
+	 * Check Sec Close bit in OTP (word 0 bit 6). If enabled, do not allow
+	 * debug session and exit function.
+	 */
+	ldr	r12, =BSEC_OTP_DATA0_ADDR
+	ldr	r12, [r12]
+	ands	r11, r12, #BSEC_OTP_DATA0_CLOSED
+	bne	func_exit
 
 	/* Check Soc revision */
 	ldr	r12, =RCC_DBGCFGR_ADDR

@@ -254,6 +254,7 @@ static const char product[] =
 bool stm32prog_usb_loop(struct stm32prog_data *data, int dev)
 {
 	int ret;
+	bool result;
 
 	stm32prog_data = data;
 	g_dnl_set_product(product);
@@ -267,8 +268,14 @@ bool stm32prog_usb_loop(struct stm32prog_data *data, int dev)
 		/* found next selected partition */
 		stm32prog_next_phase(data);
 	}
-	return (run_usb_dnl_gadget(dev, "usb_dnl_dfu") ||
-		(stm32prog_data->phase == PHASE_DO_RESET));
+
+	ret = run_usb_dnl_gadget(dev, "usb_dnl_dfu") ;
+
+	result = !!(ret) || (stm32prog_data->phase == PHASE_DO_RESET);
+
+	stm32prog_data = NULL;
+
+	return result;
 }
 
 int g_dnl_get_board_bcd_device_number(int gcnum)

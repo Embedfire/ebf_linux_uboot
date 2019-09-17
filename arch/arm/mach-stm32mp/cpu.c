@@ -8,6 +8,7 @@
 #include <environment.h>
 #include <fdt_support.h>
 #include <misc.h>
+#include <wdt.h>
 #include <asm/io.h>
 #include <asm/arch/stm32.h>
 #include <asm/arch/sys_proto.h>
@@ -15,13 +16,13 @@
 #include <dm/lists.h>
 #include <dm/uclass.h>
 #include <dt-bindings/clock/stm32mp1-clks.h>
-#include <dt-bindings/pinctrl/stm32-pinfunc.h>
 
 /* RCC register */
 #define RCC_TZCR		(STM32_RCC_BASE + 0x00)
 #define RCC_DBGCFGR		(STM32_RCC_BASE + 0x080C)
 #define RCC_BDCR		(STM32_RCC_BASE + 0x0140)
 #define RCC_MP_APB5ENSETR	(STM32_RCC_BASE + 0x0208)
+#define RCC_MP_AHB5ENSETR	(STM32_RCC_BASE + 0x0210)
 
 #define RCC_BDCR_VSWRST		BIT(31)
 #define RCC_BDCR_RTCSRC		GENMASK(17, 16)
@@ -48,6 +49,9 @@
 #define DBGMCU_IDC_DEV_ID_SHIFT	0
 #define DBGMCU_IDC_REV_ID_MASK	GENMASK(31, 16)
 #define DBGMCU_IDC_REV_ID_SHIFT	16
+
+/* GPIOZ registers */
+#define GPIOZ_SECCFGR		0x54004030
 
 /* boot interface from Bootrom
  * - boot instance = bit 31:16
@@ -78,11 +82,6 @@
  */
 #define PKG_SHIFT	27
 #define PKG_MASK	GENMASK(2, 0)
-
-#define PKG_AA_LBGA448	4
-#define PKG_AB_LBGA354	3
-#define PKG_AC_TFBGA361	2
-#define PKG_AD_TFBGA257	1
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -142,6 +141,10 @@ static void security_init(void)
 	 * Bit 16 ITAMP1E: RTC power domain supply monitoring
 	 */
 	writel(0x0, TAMP_CR1);
+
+	/* GPIOZ: deactivate the security */
+	writel(BIT(0), RCC_MP_AHB5ENSETR);
+	writel(0x0, GPIOZ_SECCFGR);
 }
 #endif /* CONFIG_STM32MP1_TRUSTED */
 
@@ -157,13 +160,17 @@ static void dbgmcu_init(void)
 }
 #endif /* !defined(CONFIG_SPL) || defined(CONFIG_SPL_BUILD) */
 
-static u32 get_bootmode(void)
-{
-	u32 boot_mode;
 #if !defined(CONFIG_STM32MP1_TRUSTED) && \
 	(!defined(CONFIG_SPL) || defined(CONFIG_SPL_BUILD))
+/* get bootmode from ROM code boot context: saved in TAMP register */
+static void update_bootmode(void)
+{
+	u32 boot_mode;
 	u32 bootrom_itf = readl(BOOTROM_PARAM_ADDR);
 	u32 bootrom_device, bootrom_instance;
+
+	/* enable TAMP clock = RTCAPBEN */
+	writel(BIT(8), RCC_MP_APB5ENSETR);
 
 	/* read bootrom context */
 	bootrom_device =
@@ -179,12 +186,14 @@ static u32 get_bootmode(void)
 	clrsetbits_le32(TAMP_BOOT_CONTEXT,
 			TAMP_BOOT_MODE_MASK,
 			boot_mode << TAMP_BOOT_MODE_SHIFT);
-#else
-	/* read TAMP backup register */
-	boot_mode = (readl(TAMP_BOOT_CONTEXT) & TAMP_BOOT_MODE_MASK) >>
-		    TAMP_BOOT_MODE_SHIFT;
+}
 #endif
-	return boot_mode;
+
+u32 get_bootmode(void)
+{
+	/* read bootmode from TAMP backup register */
+	return (readl(TAMP_BOOT_CONTEXT) & TAMP_BOOT_MODE_MASK) >>
+		    TAMP_BOOT_MODE_SHIFT;
 }
 
 /*
@@ -201,15 +210,15 @@ int arch_cpu_init(void)
 	dbgmcu_init();
 #ifndef CONFIG_STM32MP1_TRUSTED
 	security_init();
+	update_bootmode();
 #endif
 #endif
 
-	/* get bootmode from BootRom context: saved in TAMP register */
 	boot_mode = get_bootmode();
 
 	if ((boot_mode & TAMP_BOOT_DEVICE_MASK) == BOOT_SERIAL_UART)
 		gd->flags |= GD_FLG_SILENT | GD_FLG_DISABLE_CONSOLE;
-#if defined(CONFIG_DEBUG_UART) &&\
+#if defined(CONFIG_DEBUG_UART) && \
 	!defined(CONFIG_STM32MP1_TRUSTED) && \
 	(!defined(CONFIG_SPL) || defined(CONFIG_SPL_BUILD))
 	else
@@ -270,7 +279,7 @@ u32 get_cpu_type(void)
 }
 
 /* Get Package options from OTP */
-static u32 get_cpu_package(void)
+u32 get_cpu_package(void)
 {
 	return get_otp(BSEC_OTP_PKG, PKG_SHIFT, PKG_MASK);
 }
@@ -359,7 +368,7 @@ static void setup_boot_mode(void)
 	u32 boot_ctx = readl(TAMP_BOOT_CONTEXT);
 	u32 boot_mode =
 		(boot_ctx & TAMP_BOOT_MODE_MASK) >> TAMP_BOOT_MODE_SHIFT;
-	int instance = (boot_mode & TAMP_BOOT_INSTANCE_MASK) - 1;
+	unsigned int instance = (boot_mode & TAMP_BOOT_INSTANCE_MASK) - 1;
 	u32 forced_mode = (boot_ctx & TAMP_BOOT_FORCED_MASK);
 	struct udevice *dev;
 	int alias;
@@ -399,13 +408,15 @@ static void setup_boot_mode(void)
 		env_set("boot_instance", cmd);
 		break;
 	case BOOT_FLASH_NAND:
-		sprintf(cmd, "%d", instance);
 		env_set("boot_device", "nand");
-		env_set("boot_instance", cmd);
+		env_set("boot_instance", "0");
 		break;
 	case BOOT_FLASH_NOR:
 		env_set("boot_device", "nor");
 		env_set("boot_instance", "0");
+		break;
+	default:
+		pr_debug("unexpected boot mode = %x\n", boot_mode);
 		break;
 	}
 
@@ -415,8 +426,8 @@ static void setup_boot_mode(void)
 		env_set("preboot", "env set preboot; fastboot 0");
 		break;
 	case BOOT_STM32PROG:
-		printf("Enter STM32CubeProgrammer mode!\n");
-		env_set("preboot", "env set preboot; stm32prog usb 0");
+		env_set("boot_device", "usb");
+		env_set("boot_instance", "0");
 		break;
 	case BOOT_UMS_MMC0:
 	case BOOT_UMS_MMC1:
@@ -430,8 +441,9 @@ static void setup_boot_mode(void)
 		env_set("preboot", "env set preboot; run altbootcmd");
 		break;
 	case BOOT_NORMAL:
+		break;
 	default:
-		pr_debug("unexpected boot mode = %x\n", boot_mode);
+		pr_debug("unexpected forced boot mode = %x\n", forced_mode);
 		break;
 	}
 
@@ -450,11 +462,8 @@ static int setup_mac_address(void)
 	int i;
 	u32 otp[2];
 	uchar enetaddr[6];
+	char buf[ARP_HLEN_ASCII + 1];
 	struct udevice *dev;
-
-	/* MAC already in environment */
-	if (eth_env_get_enetaddr("ethaddr", enetaddr))
-		return 0;
 
 	ret = uclass_get_device_by_driver(UCLASS_MISC,
 					  DM_GET_DRIVER(stm32mp_bsec),
@@ -474,9 +483,11 @@ static int setup_mac_address(void)
 		pr_err("invalid MAC address in OTP %pM", enetaddr);
 		return -EINVAL;
 	}
+
 	pr_debug("OTP MAC address = %pM\n", enetaddr);
-	ret = !eth_env_set_enetaddr("ethaddr", enetaddr);
-	if (!ret)
+	sprintf(buf, "%pM", enetaddr);
+	ret = env_set("ethaddr", buf);
+	if (ret)
 		pr_err("Failed to set mac address %pM from OTP: %d\n",
 		       enetaddr, ret);
 #endif
@@ -490,9 +501,6 @@ static int setup_serial_number(void)
 	u32 otp[3] = {0, 0, 0 };
 	struct udevice *dev;
 	int ret;
-
-	if (env_get("serial#"))
-		return 0;
 
 	ret = uclass_get_device_by_driver(UCLASS_MISC,
 					  DM_GET_DRIVER(stm32mp_bsec),
@@ -511,53 +519,64 @@ static int setup_serial_number(void)
 	return 0;
 }
 
+
+#if defined(CONFIG_WDT) && \
+(defined(CONFIG_SPL_WATCHDOG_SUPPORT) || !defined(CONFIG_SPL_BUILD))
+/* Called by macro WATCHDOG_RESET */
+void watchdog_reset(void)
+{
+	static ulong next_reset;
+	struct udevice *watchdog_dev;
+	ulong now;
+
+	now = timer_get_us();
+
+	/* Do not reset the watchdog too often, only every 1 sec */
+	if (now > next_reset) {
+		/*
+		 * Watchdog has been enabled at SPL stage, to avoid
+		 * watchdog_dev bad reference after relocation, we don't save
+		 * it in a static variable, we retrieve it each time using
+		 * uclass_get_device() call.
+		 */
+		if (uclass_get_device(UCLASS_WDT, 0, &watchdog_dev))
+			return;
+
+		wdt_reset(watchdog_dev);
+		next_reset = now + 1000000;
+	}
+}
+
+int watchdog_start(void)
+{
+	struct udevice *watchdog_dev;
+
+	if (uclass_get_device_by_seq(UCLASS_WDT, 0, &watchdog_dev)) {
+		debug("Watchdog: Not found by seq!\n");
+		if (uclass_get_device(UCLASS_WDT, 0, &watchdog_dev)) {
+			puts("Watchdog: Not found!\n");
+			return 0;
+		}
+	}
+
+	wdt_start(watchdog_dev, 0, 0);
+	printf("Watchdog: Started\n");
+
+	return 0;
+}
+#else
+int watchdog_start(void)
+{
+	return 0;
+}
+#endif
+
 int arch_misc_init(void)
 {
+	watchdog_start();
 	setup_boot_mode();
 	setup_mac_address();
 	setup_serial_number();
 
 	return 0;
-}
-
-/*
- * This function is called right before the kernel is booted. "blob" is the
- * device tree that will be passed to the kernel.
- */
-int ft_system_setup(void *blob, bd_t *bd)
-{
-	int ret = 0;
-	u32 pkg;
-
-#if CONFIG_STM32_ETZPC
-	ret = stm32_fdt_fixup_etzpc(blob);
-	if (ret)
-		return ret;
-#endif
-
-	switch (get_cpu_package()) {
-	case PKG_AA_LBGA448:
-		pkg = STM32MP157CAA;
-		break;
-	case PKG_AB_LBGA354:
-		pkg = STM32MP157CAB;
-		break;
-	case PKG_AC_TFBGA361:
-		pkg = STM32MP157CAC;
-		break;
-	case PKG_AD_TFBGA257:
-		pkg = STM32MP157CAD;
-		break;
-	default:
-		pkg = 0;
-		break;
-	}
-	if (pkg) {
-		do_fixup_by_compat_u32(blob, "st,stm32mp157-pinctrl",
-				       "st,package", pkg, false);
-		do_fixup_by_compat_u32(blob, "st,stm32mp157-z-pinctrl",
-				       "st,package", pkg, false);
-	}
-
-	return ret;
 }

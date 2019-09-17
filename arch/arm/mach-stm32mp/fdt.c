@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0+ OR BSD-3-Clause
 /*
- * Copyright (C) 2018, STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019, STMicroelectronics - All Rights Reserved
  */
 
 #include <common.h>
 #include <fdt_support.h>
 #include <syscon.h>
-#include <linux/err.h>
+#include <asm/arch/sys_proto.h>
+#include <dt-bindings/pinctrl/stm32-pinfunc.h>
 #include <linux/io.h>
 
-#define ETZPC_DECPROT(n)	(0x10 + 4 * (n))
+#define ETZPC_DECPROT(n)	(STM32_ETZPC_BASE + 0x10 + 4 * (n))
 #define ETZPC_DECPROT_NB	6
-
-#define ETZPC_IP_VER		0x3F4
-
-#define IP_VER_STM32MP1		0x00000020
 
 #define DECPROT_MASK		0x03
 #define NB_PROT_PER_REG		0x10
@@ -147,32 +144,18 @@ static bool fdt_disable_subnode_by_address(void *fdt, int offset, u32 addr)
 	return false;
 }
 
-int stm32_fdt_fixup_etzpc(void *fdt)
+static int stm32_fdt_fixup_etzpc(void *fdt)
 {
-	void *base;
-	u32 version;
 	const u32 *array;
 	int array_size, i;
 	int soc_node, offset, shift;
 	u32 addr, status, decprot[ETZPC_DECPROT_NB];
 
-	base = syscon_get_first_range(STM32MP_SYSCON_ETZPC);
-	if (IS_ERR(base))
-		return PTR_ERR(base);
-
-	version = readl(base + ETZPC_IP_VER);
-
-	switch (version) {
-	case IP_VER_STM32MP1:
-		array = stm32mp1_ip_addr;
-		array_size = ARRAY_SIZE(stm32mp1_ip_addr);
-		break;
-	default:
-		return 0;
-	}
+	array = stm32mp1_ip_addr;
+	array_size = ARRAY_SIZE(stm32mp1_ip_addr);
 
 	for (i = 0; i < ETZPC_DECPROT_NB; i++)
-		decprot[i] = readl(base + ETZPC_DECPROT(i));
+		decprot[i] = readl(ETZPC_DECPROT(i));
 
 	soc_node = fdt_path_offset(fdt, "/soc");
 	if (soc_node < 0)
@@ -196,4 +179,46 @@ int stm32_fdt_fixup_etzpc(void *fdt)
 	}
 
 	return 0;
+}
+
+/*
+ * This function is called right before the kernel is booted. "blob" is the
+ * device tree that will be passed to the kernel.
+ */
+int ft_system_setup(void *blob, bd_t *bd)
+{
+	int ret = 0;
+	u32 pkg;
+
+	if (CONFIG_IS_ENABLED(STM32_ETZPC)) {
+		ret = stm32_fdt_fixup_etzpc(blob);
+		if (ret)
+			return ret;
+	}
+
+	switch (get_cpu_package()) {
+	case PKG_AA_LBGA448:
+		pkg = STM32MP157CAA;
+		break;
+	case PKG_AB_LBGA354:
+		pkg = STM32MP157CAB;
+		break;
+	case PKG_AC_TFBGA361:
+		pkg = STM32MP157CAC;
+		break;
+	case PKG_AD_TFBGA257:
+		pkg = STM32MP157CAD;
+		break;
+	default:
+		pkg = 0;
+		break;
+	}
+	if (pkg) {
+		do_fixup_by_compat_u32(blob, "st,stm32mp157-pinctrl",
+				       "st,package", pkg, false);
+		do_fixup_by_compat_u32(blob, "st,stm32mp157-z-pinctrl",
+				       "st,package", pkg, false);
+	}
+
+	return ret;
 }

@@ -29,7 +29,7 @@ const u8 cmd_id[] = {
 #define NB_CMD sizeof(cmd_id)
 
 /* DFU support for serial *********************************************/
-struct dfu_entity *stm32prog_get_entity(struct stm32prog_data *data)
+static struct dfu_entity *stm32prog_get_entity(struct stm32prog_data *data)
 {
 	int alt_id;
 
@@ -76,6 +76,7 @@ static int stm32prog_read(struct stm32prog_data *data, u8 phase, u32 offset,
 			  u8 *buffer, u32 buffer_size)
 {
 	struct dfu_entity *dfu_entity;
+	u32 size;
 	int ret;
 
 	/* pr_debug("%s entry\n", __func__); */
@@ -128,12 +129,15 @@ static int stm32prog_read(struct stm32prog_data *data, u8 phase, u32 offset,
 			      ret, phase, offset);
 		return ret;
 	}
-	if (ret < buffer_size) {
+
+	size = ret;
+
+	if (size < buffer_size) {
 		data->offset = 0;
 		data->read_phase = PHASE_END;
-		memset(buffer + ret, 0, buffer_size - ret);
+		memset(buffer + size, 0, buffer_size - size);
 	} else {
-		data->offset += ret;
+		data->offset += size;
 	}
 	/*pr_debug("%s exit ret=%d\n", __func__, ret);*/
 	return ret;
@@ -215,8 +219,10 @@ static int stm32prog_serial_getc_err(void)
 
 	do {
 		err = ops->getc(down_serial_dev);
-		if (err == -EAGAIN)
+		if (err == -EAGAIN) {
 			ctrlc();
+			WATCHDOG_RESET();
+		}
 	} while ((err == -EAGAIN) && (!had_ctrlc()));
 
 	return err;
@@ -243,6 +249,7 @@ static bool stm32prog_serial_get_buffer(u8 *buffer, u32 *count)
 			*count -= 1;
 		} else if (err == -EAGAIN) {
 			ctrlc();
+			WATCHDOG_RESET();
 		} else {
 			break;
 		}
@@ -626,7 +633,7 @@ static void download_command(struct stm32prog_data *data)
 	u32 packet_number;
 	u32 result = ACK_BYTE;
 	u8 ret;
-	int i;
+	unsigned int i;
 	bool error;
 	int rcv;
 
@@ -729,6 +736,10 @@ static void download_command(struct stm32prog_data *data)
 	if (rcv_xor != my_xor) {
 		printf("checksum error on packet %d\n",
 		       packet_number);
+		/* wait to be sure that all data are received
+		 * in the FIFO before flush
+		 */
+		mdelay(30);
 		data->packet_number--;
 		result = NACK_BYTE;
 		goto end;
@@ -785,7 +796,7 @@ static void download_command(struct stm32prog_data *data)
 		if (data->cursor <= BL_HEADER_SIZE)
 			goto end;
 		/* compute checksum on payload */
-		for (i = size; i < codesize; i++)
+		for (i = (unsigned long)size; i < codesize; i++)
 			data->checksum += data->buffer[i];
 
 		if (data->cursor >
@@ -822,10 +833,10 @@ end:
  */
 static void read_partition_command(struct stm32prog_data *data)
 {
-	u32 part_id, codesize, offset = 0, rcv_data;
+	u32 i, part_id, codesize, offset = 0, rcv_data;
 	long size;
 	u8 tmp_xor;
-	int i, res;
+	int res;
 	u8 buffer[256];
 
 	part_id = stm32prog_serial_getc();
@@ -854,28 +865,29 @@ static void read_partition_command(struct stm32prog_data *data)
 	}
 
 	pr_debug("%s : %x\n", __func__, part_id);
+	rcv_data = 0;
 	switch (part_id) {
 	case PHASE_OTP:
-		res = 0;
 		size = codesize;
 		if (!stm32prog_otp_read(data, offset, buffer, &size))
-			res = size;
+			rcv_data = size;
 		break;
 	case PHASE_PMIC:
-		res = 0;
 		size = codesize;
 		if (!stm32prog_pmic_read(data, offset, buffer, &size))
-			res = size;
+			rcv_data = size;
 		break;
 	default:
 		res = stm32prog_read(data, part_id, offset,
 				     buffer, codesize);
+		if (res > 0)
+			rcv_data = res;
 		break;
 	}
-	if (res > 0) {
+	if (rcv_data > 0) {
 		stm32prog_serial_putc(ACK_BYTE);
 		/*----------- Send data to the host -----------*/
-		for (i = 0; i < res; i++)
+		for (i = 0; i < rcv_data; i++)
 			stm32prog_serial_putc(buffer[i]);
 		/*----------- Send filler to the host -----------*/
 		for (; i < codesize; i++)
@@ -951,7 +963,7 @@ bool stm32prog_serial_loop(struct stm32prog_data *data)
 			/* wait to be sure that all data are received
 			 * in the FIFO before flush (CMD and XOR)
 			 */
-			mdelay(2);
+			mdelay(3);
 			stm32prog_serial_result(NACK_BYTE);
 		} else {
 			/*pr_debug("+ cmd %x\n", counter);*/

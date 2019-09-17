@@ -139,7 +139,7 @@ struct stm32prog_data {
 	int			full_update;
 
 	/* command internal information */
-	int			phase;
+	unsigned int		phase;
 	u32			offset;
 	char			error[255];
 	struct stm32prog_part_t	*cur_part;

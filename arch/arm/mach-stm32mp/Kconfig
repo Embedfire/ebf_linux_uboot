@@ -39,16 +39,18 @@ config TARGET_STM32MP1
 	select STM32_RESET
 	select STM32_SERIAL
 	imply BOOTCOUNT_LIMIT
+	imply PRE_CONSOLE_BUFFER
+	imply SILENT_CONSOLE
 	imply SYSRESET_PSCI if STM32MP1_TRUSTED
 	imply SYSRESET_SYSCON if !STM32MP1_TRUSTED
 	help
 		target STMicroelectronics SOC STM32MP1 family
-		STM32MP153 or STM32MP151
+		STM32MP157, STM32MP153 or STM32MP151
 		STMicroelectronics MPU with core ARMv7
-		dual core A7 for STM32MP153, monocore for STM32MP151
+		dual core A7 for STM32MP157/3, monocore for STM32MP151
 
 config STM32MP1_RESET_HALT_WORKAROUND
-	bool "workaround for reset halt deubg on stm32mp15x"
+	bool "workaround for reset halt debug on stm32mp15x"
 	depends on TARGET_STM32MP1
 	default y
 	help
@@ -59,7 +61,6 @@ config STM32MP1_RESET_HALT_WORKAROUND
 		it can be removed when using the Soc revision
 		that fixes the limitation.
 
-
 config STM32MP1_TRUSTED
 	bool "Support trusted boot with TF-A"
 	default y if !SPL
@@ -68,7 +69,7 @@ config STM32MP1_TRUSTED
 		Say Y here to enable boot with TF-A
 		Trusted boot chain is :
 		BootRom => TF-A.stm32 (clock & DDR) => U-Boot.stm32
-		TF-A monitor provide ST smc to manage secure devices
+		TF-A monitor provides proprietary smc to manage secure devices
 
 config STM32MP1_OPTEE
 	bool "Support trusted boot with TF-A and OPTEE"
@@ -95,8 +96,6 @@ config STM32_ETZPC
 	help
 	  Say y to enable STM32 Extended TrustZone Protection
 	  Controller (ETZPC)
-
-source "board/st/stm32mp1/Kconfig"
 
 config CMD_STM32PROG
 	bool "command stm32prog for STM32CudeProgrammer"
@@ -132,12 +131,17 @@ config SYS_TEXT_BASE
 		when DDR driver is used:
 		  DDR + 1MB (0xC0100000)
 
+config PRE_CON_BUF_ADDR
+	default 0xC02FF000
+
+config PRE_CON_BUF_SZ
+	default 4096
+
 config NR_DRAM_BANKS
 	default 1
 
 config BOOTSTAGE_STASH_ADDR
 	default 0xC3000000
-
 
 if BOOTCOUNT_LIMIT
 config SYS_BOOTCOUNT_SINGLEWORD
@@ -149,6 +153,10 @@ config SYS_BOOTCOUNT_ADDR
 endif
 
 if DEBUG_UART
+
+config DEBUG_UART_BOARD_INIT
+	default y
+
 # debug on UART4 by default
 config DEBUG_UART_BASE
 	default 0x40010000
@@ -156,10 +164,8 @@ config DEBUG_UART_BASE
 # clock source is HSI on reset
 config DEBUG_UART_CLOCK
 	default 64000000
-
-# currently activated for debug / should be deactivated for real product
-config DEBUG_UART_BOARD_INIT
-	default y
 endif
+
+source "board/st/stm32mp1/Kconfig"
 
 endif
