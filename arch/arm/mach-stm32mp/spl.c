@@ -85,41 +85,48 @@ void spl_display_print(void)
 }
 #endif
 
+__weak int board_vddcore_set(void)
+{
+	return 0;
+}
+
 void board_init_f(ulong dummy)
 {
 	struct udevice *dev;
-	int ret;
+	int ret, clk, reset, pinctrl, power;
 
 	arch_cpu_init();
 
 	ret = spl_early_init();
 	if (ret) {
-		debug("spl_early_init() failed: %d\n", ret);
+		debug("%s: spl_early_init() failed: %d\n", __func__, ret);
 		hang();
 	}
 
-	ret = uclass_get_device(UCLASS_CLK, 0, &dev);
-	if (ret) {
-		debug("Clock init failed: %d\n", ret);
-		return;
-	}
+	clk = uclass_get_device(UCLASS_CLK, 0, &dev);
+	if (clk)
+		debug("%s: Clock init failed: %d\n", __func__, clk);
 
-	ret = uclass_get_device(UCLASS_RESET, 0, &dev);
-	if (ret) {
-		debug("Reset init failed: %d\n", ret);
-		return;
-	}
+	reset = uclass_get_device(UCLASS_RESET, 0, &dev);
+	if (reset)
+		debug("%s: Reset init failed: %d\n", __func__, reset);
 
-	ret = uclass_get_device(UCLASS_PINCTRL, 0, &dev);
-	if (ret) {
-		debug("%s: Cannot find pinctrl device\n", __func__);
-		return;
-	}
+	pinctrl = uclass_get_device(UCLASS_PINCTRL, 0, &dev);
+	if (pinctrl)
+		debug("%s: Cannot find pinctrl device: %d\n",
+		      __func__, pinctrl);
 
 	/* enable console uart printing */
 	preloader_console_init();
 
 	watchdog_start();
+
+	/* change vddcore if needed after clock tree init */
+	power = board_vddcore_set();
+
+	if (clk || reset || pinctrl || power)
+		printf("%s: probe failed clk=%d reset=%d pinctrl=%d power=%d\n",
+		       __func__, clk, reset, pinctrl, power);
 
 	ret = uclass_get_device(UCLASS_RAM, 0, &dev);
 	if (ret) {

@@ -10,6 +10,9 @@
  * fixes the limitation. Anyway, this source code identifies the Soc revision
  * and is only executed if it corresponds, so it can be kept on other
  * revisions without any consequence.
+ * The revisions that need the workaround have ID values:
+ * - 0x2000X500
+ * - 0x2001X500
  ****************************************************************************/
 
 #include <linux/linkage.h>
@@ -30,7 +33,7 @@
 #define PWR_CR1_DBP			BIT(8)
 
 #define DBGMCU_IDC_ADDR			0x50081000
-#define DBGMCU_IDC_MASK			0xFFFF0FFF
+#define DBGMCU_IDC_MASK			0xFFFE0FFF
 #define DBGMCU_IDC_VALUE		0x20000500
 
 #define TAMP_BKP_REGISTER_20		(0x5C00A100 + (20 << 2))

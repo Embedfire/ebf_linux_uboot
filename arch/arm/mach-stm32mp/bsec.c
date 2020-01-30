@@ -436,7 +436,7 @@ static int stm32mp_bsec_ofdata_to_platdata(struct udevice *dev)
 	return 0;
 }
 
-#ifndef CONFIG_STM32MP1_TRUSTED
+#if !defined(CONFIG_STM32MP1_TRUSTED) && !defined(CONFIG_SPL_BUILD)
 static int stm32mp_bsec_probe(struct udevice *dev)
 {
 	int otp;
@@ -463,7 +463,7 @@ U_BOOT_DRIVER(stm32mp_bsec) = {
 	.ofdata_to_platdata = stm32mp_bsec_ofdata_to_platdata,
 	.platdata_auto_alloc_size = sizeof(struct stm32mp_bsec_platdata),
 	.ops = &stm32mp_bsec_ops,
-#ifndef CONFIG_STM32MP1_TRUSTED
+#if !defined(CONFIG_STM32MP1_TRUSTED) && !defined(CONFIG_SPL_BUILD)
 	.probe = stm32mp_bsec_probe,
 #endif
 };
