@@ -305,7 +305,20 @@ Mac id storage and retrieval in stm32mp otp :
 To program a MAC address on virgin OTP words above, you can use the fuse command
 on bank 0 to access to internal OTP:
 
-    example to set mac address "12:34:56:78:9a:bc"
+    Prerequisite: check if a MAC address isn't yet programmed in OTP
+
+    1- check OTP: their value must be equal to 0
+
+       STM32MP> fuse sense 0 57 2
+       Sensing bank 0:
+       Word 0x00000039: 00000000 00000000
+
+    2- check environment variable
+
+       STM32MP> env print ethaddr
+       ## Error: "ethaddr" not defined
+
+    Example to set mac address "12:34:56:78:9a:bc"
 
     1- Write OTP
        STM32MP> fuse prog -y 0 57 0x78563412 0x0000bc9a
@@ -319,8 +332,12 @@ on bank 0 to access to internal OTP:
        ### Setting environment from OTP MAC address = "12:34:56:78:9a:bc"
 
     4 check env update
-       STM32MP> print ethaddr
+       STM32MP> env print ethaddr
        ethaddr=12:34:56:78:9a:bc
+
+warning:: This MAC address provisioning can't be executed twice on the same
+          board as the OTP are protected. It is already done for the board
+          provided by STMicroelectronics.
 
 10. Coprocessor firmware
 ========================
