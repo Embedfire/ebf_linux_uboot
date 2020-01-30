@@ -4,6 +4,7 @@
  * Author(s): Philippe Cornu <philippe.cornu@st.com> for STMicroelectronics.
  *	      Yannick Fertre <yannick.fertre@st.com> for STMicroelectronics.
  */
+
 #include <common.h>
 #include <clk.h>
 #include <display.h>
@@ -328,9 +329,7 @@ static int stm32_ltdc_probe(struct udevice *dev)
 	struct video_uc_platdata *uc_plat = dev_get_uclass_platdata(dev);
 	struct video_priv *uc_priv = dev_get_uclass_priv(dev);
 	struct stm32_ltdc_priv *priv = dev_get_priv(dev);
-#ifdef CONFIG_VIDEO_BRIDGE
 	struct udevice *bridge = NULL;
-#endif
 	struct udevice *panel = NULL;
 	struct display_timing timings;
 	struct clk pclk;
@@ -390,19 +389,20 @@ static int stm32_ltdc_probe(struct udevice *dev)
 	/* Reset */
 	reset_deassert(&rst);
 
-#ifdef CONFIG_VIDEO_BRIDGE
-	ret = uclass_get_device(UCLASS_VIDEO_BRIDGE, 0, &bridge);
-	if (ret)
-		debug("No video bridge, or no backlight on bridge\n");
+	if (IS_ENABLED(CONFIG_VIDEO_BRIDGE)) {
+		ret = uclass_get_device(UCLASS_VIDEO_BRIDGE, 0, &bridge);
+		if (ret)
+			debug("No video bridge, or no backlight on bridge\n");
 
-	if (bridge) {
-		ret = video_bridge_attach(bridge);
-		if (ret) {
-			dev_err(dev, "fail to attach bridge\n");
-			return ret;
+		if (bridge) {
+			ret = video_bridge_attach(bridge);
+			if (ret) {
+				dev_err(dev, "fail to attach bridge\n");
+				return ret;
+			}
 		}
 	}
-#endif
+
 	/* TODO Below parameters are hard-coded for the moment... */
 	priv->l2bpp = VIDEO_BPP16;
 	priv->bg_col_argb = 0xFFFFFFFF; /* white no transparency */
@@ -428,29 +428,21 @@ static int stm32_ltdc_probe(struct udevice *dev)
 	uc_priv->ysize = timings.vactive.typ;
 	uc_priv->bpix = priv->l2bpp;
 
-#ifdef CONFIG_VIDEO_BRIDGE
-	if (bridge) {
-		ret = video_bridge_set_backlight(bridge, 80);
-		if (ret) {
-			dev_err(dev, "fail to set backlight\n");
-			return ret;
-		}
-	} else {
+	if (!bridge) {
 		ret = panel_enable_backlight(panel);
 		if (ret) {
 			dev_err(dev, "panel %s enable backlight error %d\n",
 				panel->name, ret);
 			return ret;
 		}
+	} else if (IS_ENABLED(CONFIG_VIDEO_BRIDGE)) {
+		ret = video_bridge_set_backlight(bridge, 80);
+		if (ret) {
+			dev_err(dev, "fail to set backlight\n");
+			return ret;
+		}
 	}
-#else
-	ret = panel_enable_backlight(panel);
-	if (ret) {
-		dev_err(dev, "panel %s enable backlight error %d\n",
-			panel->name, ret);
-		return ret;
-	}
-#endif
+
 	video_set_flush_dcache(dev, true);
 
 	return 0;

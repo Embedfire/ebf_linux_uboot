@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2018 STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019 STMicroelectronics - All Rights Reserved
  * Author(s): Yannick Fertre <yannick.fertre@st.com> for STMicroelectronics.
  *            Philippe Cornu <philippe.cornu@st.com> for STMicroelectronics.
  *
- * This rm68200 panel driver is based on the Linux Kernel driver from
+ * This rm68200 panel driver is inspired from the Linux Kernel driver
  * drivers/gpu/drm/panel/panel-raydium-rm68200.c.
  */
 #include <common.h>
 #include <backlight.h>
 #include <dm.h>
-#include <mipi_display.h>
+#include <mipi_dsi.h>
 #include <panel.h>
 #include <asm/gpio.h>
 #include <power/regulator.h>
@@ -76,15 +76,15 @@ struct rm68200_panel_priv {
 };
 
 static const struct display_timing default_timing = {
-	.pixelclock = {.min = 52582000, .typ = 52582000, .max = 52582000,},
-	.hactive = {.min = 720, .typ = 720, .max = 720,},
-	.hfront_porch = {.min = 38, .typ = 38, .max = 38,},
-	.hback_porch = {.min = 8, .typ = 8, .max = 8,},
-	.hsync_len = {.min = 38, .typ = 38, .max = 38,},
-	.vactive = {.min = 1280, .typ = 1280, .max = 1280,},
-	.vfront_porch = {.min = 12, .typ = 12, .max = 12,},
-	.vback_porch = {.min = 4, .typ = 4, .max = 4,},
-	.vsync_len = {.min = 12, .typ = 12, .max = 12,},
+	.pixelclock.typ		= 54000000,
+	.hactive.typ		= 720,
+	.hfront_porch.typ	= 48,
+	.hback_porch.typ	= 48,
+	.hsync_len.typ		= 9,
+	.vactive.typ		= 1280,
+	.vfront_porch.typ	= 12,
+	.vback_porch.typ	= 12,
+	.vsync_len.typ		= 5,
 };
 
 static void rm68200_dcs_write_buf(struct udevice *dev, const void *data,
@@ -226,12 +226,6 @@ static int rm68200_panel_enable_backlight(struct udevice *dev)
 	struct rm68200_panel_priv *priv = dev_get_priv(dev);
 	int ret;
 
-	device->lanes = 2;
-	device->format = MIPI_DSI_FMT_RGB888;
-	device->mode_flags = MIPI_DSI_MODE_VIDEO |
-			     MIPI_DSI_MODE_VIDEO_BURST |
-			     MIPI_DSI_MODE_LPM;
-
 	ret = mipi_dsi_attach(device);
 	if (ret < 0)
 		return ret;
@@ -261,6 +255,7 @@ static int rm68200_panel_get_display_timing(struct udevice *dev,
 					    struct display_timing *timings)
 {
 	memcpy(timings, &default_timing, sizeof(*timings));
+
 	return 0;
 }
 
@@ -299,6 +294,7 @@ static int rm68200_panel_ofdata_to_platdata(struct udevice *dev)
 static int rm68200_panel_probe(struct udevice *dev)
 {
 	struct rm68200_panel_priv *priv = dev_get_priv(dev);
+	struct mipi_dsi_panel_plat *plat = dev_get_platdata(dev);
 	int ret;
 
 	if (IS_ENABLED(CONFIG_DM_REGULATOR) && priv->reg) {
@@ -312,6 +308,13 @@ static int rm68200_panel_probe(struct udevice *dev)
 	mdelay(1);
 	dm_gpio_set_value(&priv->reset, false);
 	mdelay(10);
+
+	/* fill characteristics of DSI data link */
+	plat->lanes = 2;
+	plat->format = MIPI_DSI_FMT_RGB888;
+	plat->mode_flags = MIPI_DSI_MODE_VIDEO |
+			   MIPI_DSI_MODE_VIDEO_BURST |
+			   MIPI_DSI_MODE_LPM;
 
 	return 0;
 }

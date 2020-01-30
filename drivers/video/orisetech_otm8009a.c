@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2018 STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019 STMicroelectronics - All Rights Reserved
  * Author(s): Yannick Fertre <yannick.fertre@st.com> for STMicroelectronics.
  *            Philippe Cornu <philippe.cornu@st.com> for STMicroelectronics.
  *
- * This otm8009a panel driver is based on the Linux Kernel driver from
+ * This otm8009a panel driver is inspired from the Linux Kernel driver
  * drivers/gpu/drm/panel/panel-orisetech-otm8009a.c.
  */
 #include <common.h>
 #include <backlight.h>
 #include <dm.h>
-#include <mipi_display.h>
+#include <mipi_dsi.h>
 #include <panel.h>
 #include <asm/gpio.h>
 #include <power/regulator.h>
@@ -63,15 +63,15 @@ struct otm8009a_panel_priv {
 };
 
 static const struct display_timing default_timing = {
-	.pixelclock = {.min = 32729000, .typ = 32729000, .max = 32729000,},
-	.hactive = {.min = 480, .typ = 480, .max = 480,},
-	.hfront_porch = {.min = 120, .typ = 120, .max = 120,},
-	.hback_porch = {.min = 120, .typ = 120, .max = 120,},
-	.hsync_len = {.min = 63, .typ = 63, .max = 63,},
-	.vactive = {.min = 800, .typ = 800, .max = 800,},
-	.vfront_porch = {.min = 12, .typ = 12, .max = 12,},
-	.vback_porch = {.min = 12, .typ = 12, .max = 12,},
-	.vsync_len = {.min = 12, .typ = 12, .max = 12,},
+	.pixelclock.typ		= 29700000,
+	.hactive.typ		= 480,
+	.hfront_porch.typ	= 98,
+	.hback_porch.typ	= 98,
+	.hsync_len.typ		= 32,
+	.vactive.typ		= 800,
+	.vfront_porch.typ	= 15,
+	.vback_porch.typ	= 14,
+	.vsync_len.typ		= 10,
 };
 
 static void otm8009a_dcs_write_buf(struct udevice *dev, const void *data,
@@ -84,10 +84,32 @@ static void otm8009a_dcs_write_buf(struct udevice *dev, const void *data,
 		dev_err(dev, "mipi dsi dcs write buffer failed\n");
 }
 
+static void otm8009a_dcs_write_buf_hs(struct udevice *dev, const void *data,
+				      size_t len)
+{
+	struct mipi_dsi_panel_plat *plat = dev_get_platdata(dev);
+	struct mipi_dsi_device *device = plat->device;
+
+	/* data will be sent in dsi hs mode (ie. no lpm) */
+	device->mode_flags &= ~MIPI_DSI_MODE_LPM;
+
+	if (mipi_dsi_dcs_write_buffer(device, data, len) < 0)
+		dev_err(dev, "mipi dsi dcs write buffer failed\n");
+
+	/* restore back the dsi lpm mode */
+	device->mode_flags |= MIPI_DSI_MODE_LPM;
+}
+
 #define dcs_write_seq(dev, seq...)				\
 ({								\
 	static const u8 d[] = { seq };				\
 	otm8009a_dcs_write_buf(dev, d, ARRAY_SIZE(d));		\
+})
+
+#define dcs_write_seq_hs(dev, seq...)				\
+({								\
+	static const u8 d[] = { seq };				\
+	otm8009a_dcs_write_buf_hs(dev, d, ARRAY_SIZE(d));	\
 })
 
 #define dcs_write_cmd_at(dev, cmd, seq...)		\
@@ -196,11 +218,13 @@ static int otm8009a_init_sequence(struct udevice *dev)
 	/* Default portrait 480x800 rgb24 */
 	dcs_write_seq(dev, MIPI_DCS_SET_ADDRESS_MODE, 0x00);
 
-	ret =  mipi_dsi_dcs_set_column_address(device, 0, 479);
+	ret =  mipi_dsi_dcs_set_column_address(device, 0,
+					       default_timing.hactive.typ - 1);
 	if (ret)
 		return ret;
 
-	ret =  mipi_dsi_dcs_set_page_address(device, 0, 799);
+	ret =  mipi_dsi_dcs_set_page_address(device, 0,
+					     default_timing.vactive.typ - 1);
 	if (ret)
 		return ret;
 
@@ -213,6 +237,17 @@ static int otm8009a_init_sequence(struct udevice *dev)
 	/* Disable CABC feature */
 	dcs_write_seq(dev, MIPI_DCS_WRITE_POWER_SAVE, 0x00);
 
+	ret = mipi_dsi_dcs_set_display_on(device);
+	if (ret)
+		return ret;
+
+	ret = mipi_dsi_dcs_nop(device);
+	if (ret)
+		return ret;
+
+	/* Send Command GRAM memory write (no parameters) */
+	dcs_write_seq(dev, MIPI_DCS_WRITE_MEMORY_START);
+
 	return 0;
 }
 
@@ -221,12 +256,6 @@ static int otm8009a_panel_enable_backlight(struct udevice *dev)
 	struct mipi_dsi_panel_plat *plat = dev_get_platdata(dev);
 	struct mipi_dsi_device *device = plat->device;
 	int ret;
-
-	device->lanes = 2;
-	device->format = MIPI_DSI_FMT_RGB888;
-	device->mode_flags = MIPI_DSI_MODE_VIDEO |
-			     MIPI_DSI_MODE_VIDEO_BURST |
-			     MIPI_DSI_MODE_LPM;
 
 	ret = mipi_dsi_attach(device);
 	if (ret < 0)
@@ -247,18 +276,10 @@ static int otm8009a_panel_enable_backlight(struct udevice *dev)
 	/* Update Brightness Control & Backlight */
 	dcs_write_seq(dev, MIPI_DCS_WRITE_CONTROL_DISPLAY, 0x24);
 
-	ret = mipi_dsi_dcs_set_display_on(device);
-	if (ret)
-		return ret;
+	/* Update Brightness Control & Backlight */
+	dcs_write_seq_hs(dev, MIPI_DCS_WRITE_CONTROL_DISPLAY);
 
-	ret = mipi_dsi_dcs_nop(device);
-	if (ret)
-		return ret;
-
-	/* Send Command GRAM memory write (no parameters) */
-	dcs_write_seq(dev, MIPI_DCS_WRITE_MEMORY_START);
-
-	/* need to wait a few time before set the DSI bridge in video mode */
+	/* Need to wait a few time before sending the first image */
 	mdelay(10);
 
 	return 0;
@@ -268,6 +289,7 @@ static int otm8009a_panel_get_display_timing(struct udevice *dev,
 					     struct display_timing *timings)
 {
 	memcpy(timings, &default_timing, sizeof(*timings));
+
 	return 0;
 }
 
@@ -299,23 +321,28 @@ static int otm8009a_panel_ofdata_to_platdata(struct udevice *dev)
 static int otm8009a_panel_probe(struct udevice *dev)
 {
 	struct otm8009a_panel_priv *priv = dev_get_priv(dev);
+	struct mipi_dsi_panel_plat *plat = dev_get_platdata(dev);
 	int ret;
 
 	if (IS_ENABLED(CONFIG_DM_REGULATOR) && priv->reg) {
 		dev_dbg(dev, "enable regulator '%s'\n", priv->reg->name);
 		ret = regulator_set_enable(priv->reg, true);
-		if (ret) {
-			dev_err(dev, "Regulator : '%s' - can't enable\n",
-				priv->reg->name);
+		if (ret)
 			return ret;
-		}
 	}
 
 	/* reset panel */
 	dm_gpio_set_value(&priv->reset, true);
-	mdelay(1);
+	mdelay(1); /* >50us */
 	dm_gpio_set_value(&priv->reset, false);
-	mdelay(10);
+	mdelay(10); /* >5ms */
+
+	/* fill characteristics of DSI data link */
+	plat->lanes = 2;
+	plat->format = MIPI_DSI_FMT_RGB888;
+	plat->mode_flags = MIPI_DSI_MODE_VIDEO |
+			   MIPI_DSI_MODE_VIDEO_BURST |
+			   MIPI_DSI_MODE_LPM;
 
 	return 0;
 }

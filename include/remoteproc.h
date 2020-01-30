@@ -45,6 +45,17 @@ struct dm_rproc_uclass_pdata {
 };
 
 /**
+ * struct rproc_priv - Device information used by the rproc uclass
+ *
+ * @rsc_table_addr:	Resource Table address (if any)
+ * @rsc_table_size:	Resource Table size
+ */
+struct rproc_priv {
+	ulong rsc_table_addr;
+	unsigned int rsc_table_size;
+};
+
+/**
  * struct dm_rproc_ops - Operations that are provided by remote proc driver
  * @init:	Initialize the remoteproc device invoked after probe (optional)
  *		Return 0 on success, -ve error on fail

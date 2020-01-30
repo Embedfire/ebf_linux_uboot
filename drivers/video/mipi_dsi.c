@@ -1,8 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * MIPI DSI Bus
  *
  * Copyright (C) 2012-2013, Samsung Electronics, Co., Ltd.
- * Copyright (C) 2018 STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019 STMicroelectronics - All Rights Reserved
  * Andrzej Hajda <a.hajda@samsung.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -25,8 +26,8 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
- * Mipi_display.c contains a set of dsi helpers.
- * This file is based on the drm helper file drivers/gpu/drm/drm_mipi_dsi.c
+ * Mipi_dsi.c contains a set of dsi helpers.
+ * This file is inspired from the drm helper file drivers/gpu/drm/drm_mipi_dsi.c
  * (kernel linux).
  *
  */
@@ -36,6 +37,7 @@
 #include <display.h>
 #include <dm.h>
 #include <mipi_display.h>
+#include <mipi_dsi.h>
 
 /**
  * DOC: dsi helpers
@@ -215,6 +217,46 @@ int mipi_dsi_create_packet(struct mipi_dsi_packet *packet,
 	return 0;
 }
 EXPORT_SYMBOL(mipi_dsi_create_packet);
+
+/**
+ * mipi_dsi_shutdown_peripheral() - sends a Shutdown Peripheral command
+ * @dsi: DSI peripheral device
+ *
+ * Return: 0 on success or a negative error code on failure.
+ */
+int mipi_dsi_shutdown_peripheral(struct mipi_dsi_device *dsi)
+{
+	struct mipi_dsi_msg msg = {
+		.channel = dsi->channel,
+		.type = MIPI_DSI_SHUTDOWN_PERIPHERAL,
+		.tx_buf = (u8 [2]) { 0, 0 },
+		.tx_len = 2,
+	};
+	int ret = mipi_dsi_device_transfer(dsi, &msg);
+
+	return (ret < 0) ? ret : 0;
+}
+EXPORT_SYMBOL(mipi_dsi_shutdown_peripheral);
+
+/**
+ * mipi_dsi_turn_on_peripheral() - sends a Turn On Peripheral command
+ * @dsi: DSI peripheral device
+ *
+ * Return: 0 on success or a negative error code on failure.
+ */
+int mipi_dsi_turn_on_peripheral(struct mipi_dsi_device *dsi)
+{
+	struct mipi_dsi_msg msg = {
+		.channel = dsi->channel,
+		.type = MIPI_DSI_TURN_ON_PERIPHERAL,
+		.tx_buf = (u8 [2]) { 0, 0 },
+		.tx_len = 2,
+	};
+	int ret = mipi_dsi_device_transfer(dsi, &msg);
+
+	return (ret < 0) ? ret : 0;
+}
+EXPORT_SYMBOL(mipi_dsi_turn_on_peripheral);
 
 /*
  * mipi_dsi_set_maximum_return_packet_size() - specify the maximum size of the
@@ -440,32 +482,6 @@ ssize_t mipi_dsi_dcs_read(struct mipi_dsi_device *dsi, u8 cmd, void *data,
 	return mipi_dsi_device_transfer(dsi, &msg);
 }
 EXPORT_SYMBOL(mipi_dsi_dcs_read);
-
-/**
- * mipi_dsi_pixel_format_to_bpp - obtain the number of bits per pixel for any
- *                                given pixel format defined by the MIPI DSI
- *                                specification
- * @fmt: MIPI DSI pixel format
- *
- * Returns: The number of bits per pixel of the given pixel format.
- */
-int mipi_dsi_pixel_format_to_bpp(enum mipi_dsi_pixel_format fmt)
-{
-	switch (fmt) {
-	case MIPI_DSI_FMT_RGB888:
-	case MIPI_DSI_FMT_RGB666:
-		return 24;
-
-	case MIPI_DSI_FMT_RGB666_PACKED:
-		return 18;
-
-	case MIPI_DSI_FMT_RGB565:
-		return 16;
-	}
-
-	return -EINVAL;
-}
-EXPORT_SYMBOL(mipi_dsi_pixel_format_to_bpp);
 
 /**
  * mipi_dsi_dcs_nop() - send DCS nop packet
@@ -810,8 +826,3 @@ int mipi_dsi_dcs_get_display_brightness(struct mipi_dsi_device *dsi,
 	return 0;
 }
 EXPORT_SYMBOL(mipi_dsi_dcs_get_display_brightness);
-
-MODULE_AUTHOR("Andrzej Hajda <a.hajda@samsung.com>");
-MODULE_AUTHOR("Yannick Fertre <yannick.fertre@st.com>");
-MODULE_DESCRIPTION("MIPI DSI Bus");
-MODULE_LICENSE("GPL and additional rights");

@@ -1486,6 +1486,16 @@ static int mmc_set_ios(struct mmc *mmc)
 
 	return ret;
 }
+
+static int mmc_host_power_cycle(struct mmc *mmc)
+{
+	int ret = 0;
+
+	if (mmc->cfg->ops->host_power_cycle)
+		ret = mmc->cfg->ops->host_power_cycle(mmc);
+
+	return ret;
+}
 #endif
 
 int mmc_set_clock(struct mmc *mmc, uint clock, bool disable)
@@ -2566,6 +2576,11 @@ static int mmc_power_cycle(struct mmc *mmc)
 	ret = mmc_power_off(mmc);
 	if (ret)
 		return ret;
+
+	ret = mmc_host_power_cycle(mmc);
+	if (ret)
+		return ret;
+
 	/*
 	 * SD spec recommends at least 1ms of delay. Let's wait for 2ms
 	 * to be on the safer side.

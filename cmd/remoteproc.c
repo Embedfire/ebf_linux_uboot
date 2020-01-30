@@ -177,10 +177,6 @@ static int do_remoteproc_load_rsc_table(cmd_tbl_t *cmdtp, int flag, int argc,
 	}
 
 	ret = rproc_load_rsc_table(id, addr, size, &rsc_addr, &rsc_size);
-	if (!ret) {
-		env_set_hex("copro_rsc_addr", rsc_addr);
-		env_set_hex("copro_rsc_size", rsc_size);
-	}
 
 	printf("Remote Processor %d resource table %s : 0x%08lx-0x%x\n",
 	       id, ret ? "Not found" : "Found", ret ? 0 : rsc_addr,

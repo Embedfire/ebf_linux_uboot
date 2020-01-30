@@ -1,25 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2016, Fuzhou Rockchip Electronics Co., Ltd
- * Copyright (C) 2018, STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019, STMicroelectronics - All Rights Reserved
  * Author(s): Philippe Cornu <philippe.cornu@st.com> for STMicroelectronics.
  *            Yannick Fertre <yannick.fertre@st.com> for STMicroelectronics.
  *
- * This generic Synopsys DesignWare MIPI DSI host driver is based on the
- * Linux Kernel driver from drivers/gpu/drm/bridge/synopsys/dw-mipi-dsi.c.
+ * This generic Synopsys DesignWare MIPI DSI host driver is inspired from
+ * the Linux Kernel driver drivers/gpu/drm/bridge/synopsys/dw-mipi-dsi.c.
  */
 
 #include <common.h>
 #include <clk.h>
+#include <dsi_host.h>
 #include <dm.h>
 #include <errno.h>
-#include <mipi_display.h>
 #include <panel.h>
 #include <video.h>
 #include <asm/io.h>
 #include <asm/arch/gpio.h>
 #include <dm/device-internal.h>
-#include <dw_mipi_dsi.h>
 #include <linux/iopoll.h>
 #include <video_bridge.h>
 
@@ -221,11 +220,8 @@ struct dw_mipi_dsi {
 	void __iomem *base;
 	unsigned int lane_mbps; /* per lane */
 	u32 channel;
-	u32 lanes;
-	u32 format;
-	unsigned long mode_flags;
 	unsigned int max_data_lanes;
-	const struct dw_mipi_dsi_phy_ops *phy_ops;
+	const struct mipi_dsi_phy_ops *phy_ops;
 };
 
 static int dsi_mode_vrefresh(struct display_timing *timings)
@@ -286,10 +282,7 @@ static int dw_mipi_dsi_host_attach(struct mipi_dsi_host *host,
 		return -EINVAL;
 	}
 
-	dsi->lanes = device->lanes;
 	dsi->channel = device->channel;
-	dsi->format = device->format;
-	dsi->mode_flags = device->mode_flags;
 
 	return 0;
 }
@@ -444,6 +437,7 @@ static const struct mipi_dsi_host_ops dw_mipi_dsi_host_ops = {
 
 static void dw_mipi_dsi_video_mode_config(struct dw_mipi_dsi *dsi)
 {
+	struct mipi_dsi_device *device = dsi->device;
 	u32 val;
 
 	/*
@@ -453,9 +447,9 @@ static void dw_mipi_dsi_video_mode_config(struct dw_mipi_dsi *dsi)
 	 */
 	val = ENABLE_LOW_POWER;
 
-	if (dsi->mode_flags & MIPI_DSI_MODE_VIDEO_BURST)
+	if (device->mode_flags & MIPI_DSI_MODE_VIDEO_BURST)
 		val |= VID_MODE_TYPE_BURST;
-	else if (dsi->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE)
+	else if (device->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE)
 		val |= VID_MODE_TYPE_NON_BURST_SYNC_PULSES;
 	else
 		val |= VID_MODE_TYPE_NON_BURST_SYNC_EVENTS;
@@ -466,6 +460,8 @@ static void dw_mipi_dsi_video_mode_config(struct dw_mipi_dsi *dsi)
 static void dw_mipi_dsi_set_mode(struct dw_mipi_dsi *dsi,
 				 unsigned long mode_flags)
 {
+	const struct mipi_dsi_phy_ops *phy_ops = dsi->phy_ops;
+
 	dsi_write(dsi, DSI_PWR_UP, RESET);
 
 	if (mode_flags & MIPI_DSI_MODE_VIDEO) {
@@ -476,10 +472,13 @@ static void dw_mipi_dsi_set_mode(struct dw_mipi_dsi *dsi,
 		dsi_write(dsi, DSI_MODE_CFG, ENABLE_CMD_MODE);
 	}
 
+	if (phy_ops->post_set_mode)
+		phy_ops->post_set_mode(dsi->device, mode_flags);
+
 	dsi_write(dsi, DSI_PWR_UP, POWERUP);
 }
 
-static void dw_mipi_dsi_init(struct dw_mipi_dsi *dsi)
+static void dw_mipi_dsi_init_pll(struct dw_mipi_dsi *dsi)
 {
 	/*
 	 * The maximum permitted escape clock is 20MHz and it is derived from
@@ -505,9 +504,10 @@ static void dw_mipi_dsi_init(struct dw_mipi_dsi *dsi)
 static void dw_mipi_dsi_dpi_config(struct dw_mipi_dsi *dsi,
 				   struct display_timing *timings)
 {
+	struct mipi_dsi_device *device = dsi->device;
 	u32 val = 0, color = 0;
 
-	switch (dsi->format) {
+	switch (device->format) {
 	case MIPI_DSI_FMT_RGB888:
 		color = DPI_COLOR_CODING_24BIT;
 		break;
@@ -522,9 +522,9 @@ static void dw_mipi_dsi_dpi_config(struct dw_mipi_dsi *dsi,
 		break;
 	}
 
-	if (dsi->mode_flags & DISPLAY_FLAGS_VSYNC_HIGH)
+	if (device->mode_flags & DISPLAY_FLAGS_VSYNC_HIGH)
 		val |= VSYNC_ACTIVE_LOW;
-	if (dsi->mode_flags & DISPLAY_FLAGS_HSYNC_HIGH)
+	if (device->mode_flags & DISPLAY_FLAGS_HSYNC_HIGH)
 		val |= HSYNC_ACTIVE_LOW;
 
 	dsi_write(dsi, DSI_DPI_VCID, DPI_VCID(dsi->channel));
@@ -560,6 +560,8 @@ static void dw_mipi_dsi_video_packet_config(struct dw_mipi_dsi *dsi,
 
 static void dw_mipi_dsi_command_mode_config(struct dw_mipi_dsi *dsi)
 {
+	const struct mipi_dsi_phy_ops *phy_ops = dsi->phy_ops;
+
 	/*
 	 * TODO dw drv improvements
 	 * compute high speed transmission counter timeout according
@@ -573,6 +575,9 @@ static void dw_mipi_dsi_command_mode_config(struct dw_mipi_dsi *dsi)
 	 */
 	dsi_write(dsi, DSI_BTA_TO_CNT, 0xd00);
 	dsi_write(dsi, DSI_MODE_CFG, ENABLE_CMD_MODE);
+
+	if (phy_ops->post_set_mode)
+		phy_ops->post_set_mode(dsi->device, 0);
 }
 
 /* Get lane byte clock cycles. */
@@ -662,13 +667,15 @@ static void dw_mipi_dsi_dphy_timing_config(struct dw_mipi_dsi *dsi)
 
 static void dw_mipi_dsi_dphy_interface_config(struct dw_mipi_dsi *dsi)
 {
+	struct mipi_dsi_device *device = dsi->device;
+
 	/*
 	 * TODO dw drv improvements
 	 * stop wait time should be the maximum between host dsi
 	 * and panel stop wait times
 	 */
 	dsi_write(dsi, DSI_PHY_IF_CFG, PHY_STOP_WAIT_TIME(0x20) |
-		  N_LANES(dsi->lanes));
+		  N_LANES(device->lanes));
 }
 
 static void dw_mipi_dsi_dphy_init(struct dw_mipi_dsi *dsi)
@@ -712,15 +719,16 @@ static void dw_mipi_dsi_clear_err(struct dw_mipi_dsi *dsi)
 static void dw_mipi_dsi_bridge_set(struct dw_mipi_dsi *dsi,
 				   struct display_timing *timings)
 {
-	const struct dw_mipi_dsi_phy_ops *phy_ops = dsi->phy_ops;
+	const struct mipi_dsi_phy_ops *phy_ops = dsi->phy_ops;
+	struct mipi_dsi_device *device = dsi->device;
 	int ret;
 
-	ret = phy_ops->get_lane_mbps(dsi->device, timings, dsi->lanes,
-				     dsi->format, &dsi->lane_mbps);
+	ret = phy_ops->get_lane_mbps(dsi->device, timings, device->lanes,
+				     device->format, &dsi->lane_mbps);
 	if (ret)
 		dev_warn(dsi->dev, "Phy get_lane_mbps() failed\n");
 
-	dw_mipi_dsi_init(dsi);
+	dw_mipi_dsi_init_pll(dsi);
 	dw_mipi_dsi_dpi_config(dsi, timings);
 	dw_mipi_dsi_packet_handler_config(dsi);
 	dw_mipi_dsi_video_mode_config(dsi);
@@ -747,60 +755,31 @@ static void dw_mipi_dsi_bridge_set(struct dw_mipi_dsi *dsi,
 	dw_mipi_dsi_set_mode(dsi, 0);
 }
 
-void dw_mipi_dsi_bridge_enable(struct mipi_dsi_device *device)
+static int dw_mipi_dsi_init(struct udevice *dev,
+			    struct mipi_dsi_device *device,
+			    struct display_timing *timings,
+			    unsigned int max_data_lanes,
+			    const struct mipi_dsi_phy_ops *phy_ops)
 {
-	struct mipi_dsi_host *host = device->host;
-	struct dw_mipi_dsi *dsi = host_to_dsi(host);
-
-	/* Switch to video mode for panel-bridge enable & panel enable */
-	dw_mipi_dsi_set_mode(dsi, MIPI_DSI_MODE_VIDEO);
-}
-EXPORT_SYMBOL_GPL(dw_mipi_dsi_bridge_enable);
-
-int dw_mipi_dsi_init_bridge(struct mipi_dsi_device *device)
-{
-	struct dw_mipi_dsi_plat_data *platdata = dev_get_platdata(device->dev);
-	struct udevice *panel = platdata->panel;
-	struct display_timing timings;
-	struct dw_mipi_dsi *dsi;
+	struct dw_mipi_dsi *dsi = dev_get_priv(dev);
 	struct clk clk;
 	int ret;
 
-	dsi = kzalloc(sizeof(*dsi), GFP_KERNEL);
+	if (!phy_ops->init || !phy_ops->get_lane_mbps) {
+		dev_err(device->dev, "Phy not properly configured\n");
+		return -ENODEV;
+	}
 
-	dsi->phy_ops = platdata->phy_ops;
-	dsi->max_data_lanes = platdata->max_data_lanes;
+	dsi->phy_ops = phy_ops;
+	dsi->max_data_lanes = max_data_lanes;
 	dsi->device = device;
 	dsi->dsi_host.ops = &dw_mipi_dsi_host_ops;
 	device->host = &dsi->dsi_host;
-
-	 /* TODO Get these settings from panel */
-	dsi->lanes = 2;
-	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO |
-			  MIPI_DSI_MODE_VIDEO_BURST |
-			  MIPI_DSI_MODE_LPM;
 
 	dsi->base = (void *)dev_read_addr(device->dev);
 	if ((fdt_addr_t)dsi->base == FDT_ADDR_T_NONE) {
 		dev_err(device->dev, "dsi dt register address error\n");
 		return -EINVAL;
-	}
-
-	ret = panel_get_display_timing(panel, &timings);
-	if (ret) {
-		ret = fdtdec_decode_display_timing(gd->fdt_blob,
-						   dev_of_offset(panel),
-						   0, &timings);
-		if (ret) {
-			dev_err(dev, "decode display timing error %d\n", ret);
-			return ret;
-		}
-	}
-
-	if (!dsi->phy_ops->init || !dsi->phy_ops->get_lane_mbps) {
-		dev_err(device->dev, "Phy not properly configured\n");
-		return -ENODEV;
 	}
 
 	ret = clk_get_by_name(device->dev, "px_clk", &clk);
@@ -810,13 +789,40 @@ int dw_mipi_dsi_init_bridge(struct mipi_dsi_device *device)
 	}
 
 	/*  get the pixel clock set by the clock framework */
-	timings.pixelclock.typ = clk_get_rate(&clk);
+	timings->pixelclock.typ = clk_get_rate(&clk);
 
-	dw_mipi_dsi_bridge_set(dsi, &timings);
+	dw_mipi_dsi_bridge_set(dsi, timings);
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(dw_mipi_dsi_init_bridge);
+
+static int dw_mipi_dsi_enable(struct udevice *dev)
+{
+	struct dw_mipi_dsi *dsi = dev_get_priv(dev);
+
+	/* Switch to video mode for panel-bridge enable & panel enable */
+	dw_mipi_dsi_set_mode(dsi, MIPI_DSI_MODE_VIDEO);
+
+	return 0;
+}
+
+struct dsi_host_ops dw_mipi_dsi_ops = {
+	.init = dw_mipi_dsi_init,
+	.enable = dw_mipi_dsi_enable,
+};
+
+static int dw_mipi_dsi_probe(struct udevice *dev)
+{
+	return 0;
+}
+
+U_BOOT_DRIVER(dw_mipi_dsi) = {
+	.name			= "dw_mipi_dsi",
+	.id			= UCLASS_DSI_HOST,
+	.probe			= dw_mipi_dsi_probe,
+	.ops			= &dw_mipi_dsi_ops,
+	.priv_auto_alloc_size	= sizeof(struct dw_mipi_dsi),
+};
 
 MODULE_AUTHOR("Chris Zhong <zyw@rock-chips.com>");
 MODULE_AUTHOR("Philippe Cornu <philippe.cornu@st.com>");

@@ -12,6 +12,7 @@
 #include <reset.h>
 #include <syscon.h>
 #include <asm/arch/stm32mp1_smc.h>
+#include <asm/io.h>
 
 #define RCC_GCR_HOLD_BOOT	0
 #define RCC_GCR_RELEASE_BOOT	1
@@ -202,6 +203,7 @@ static int stm32_copro_load(struct udevice *dev, ulong addr, ulong size)
  */
 static int stm32_copro_start(struct udevice *dev)
 {
+	struct rproc_priv *uc_priv = dev_get_uclass_priv(dev);
 	int ret;
 
 	/* move hold boot from true to false start the copro */
@@ -213,7 +215,12 @@ static int stm32_copro_start(struct udevice *dev)
 	 * Once copro running, reset hold boot flag to avoid copro
 	 * rebooting autonomously
 	 */
-	return stm32_copro_set_hold_boot(dev, true);
+	ret = stm32_copro_set_hold_boot(dev, true);
+	if (!ret)
+		/* Store rsc_address in bkp register */
+		writel(uc_priv->rsc_table_addr, TAMP_COPRO_RSC_TBL_ADDRESS);
+
+	return ret;
 }
 
 /**

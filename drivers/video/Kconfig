@@ -74,7 +74,8 @@ config VIDEO_ANSI
 	  console.
 
 config VIDEO_MIPI_DSI
-	bool
+	bool "Support MIPI DSI interface"
+	depends on DM_VIDEO
 	help
 	  Support MIPI DSI interface for driving a MIPI compatible device.
 	  The MIPI Display Serial Interface (MIPI DSI) defines a high-speed
@@ -332,16 +333,18 @@ config VIDEO_LCD_ORISETECH_OTM8009A
 	depends on DM_VIDEO
 	select VIDEO_MIPI_DSI
 	default n
-	---help---
-	Support for Orise Tech otm8009a 480p dsi 2dl video mode panel.
+	help
+	Say Y here if you want to enable support for Orise Technology
+	otm8009a 480x800 dsi 2dl panel.
 
 config VIDEO_LCD_RAYDIUM_RM68200
 	bool "RM68200 DSI LCD panel support"
 	depends on DM_VIDEO
 	select VIDEO_MIPI_DSI
 	default n
-	---help---
-	Support for Raydium rm68200 720x1280 dsi 2dl video mode panel.
+	help
+	Say Y here if you want to enable support for Raydium RM68200
+	720x1280 DSI video mode panel.
 
 config VIDEO_LCD_SSD2828
 	bool "SSD2828 bridge chip"

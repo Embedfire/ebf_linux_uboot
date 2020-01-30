@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2018 STMicroelectronics - All Rights Reserved
+ * Copyright (C) 2019 STMicroelectronics - All Rights Reserved
  * Author(s): Philippe Cornu <philippe.cornu@st.com> for STMicroelectronics.
  *	      Yannick Fertre <yannick.fertre@st.com> for STMicroelectronics.
  *
  * This MIPI DSI controller driver is based on the Linux Kernel driver from
  * drivers/gpu/drm/stm/dw_mipi_dsi-stm.c.
  */
+
 #include <common.h>
 #include <clk.h>
 #include <dm.h>
-#include <dw_mipi_dsi.h>
-#include <mipi_display.h>
+#include <dsi_host.h>
+#include <mipi_dsi.h>
 #include <panel.h>
 #include <reset.h>
 #include <video.h>
@@ -19,6 +20,7 @@
 #include <asm/io.h>
 #include <asm/arch/gpio.h>
 #include <dm/device-internal.h>
+#include <dm/lists.h>
 #include <linux/iopoll.h>
 #include <power/regulator.h>
 
@@ -87,6 +89,7 @@ struct stm32_dsi_priv {
 	int lane_min_kbps;
 	int lane_max_kbps;
 	struct udevice *vdd_reg;
+	struct udevice *dsi_host;
 };
 
 static inline void dsi_write(struct stm32_dsi_priv *dsi, u32 reg, u32 val)
@@ -207,12 +210,14 @@ static int dsi_phy_init(void *priv_data)
 	u32 val;
 	int ret;
 
+	debug("Initialize DSI physical layer\n");
+
 	/* Enable the regulator */
 	dsi_set(dsi, DSI_WRPCR, WRPCR_REGEN | WRPCR_BGREN);
 	ret = readl_poll_timeout(dsi->base + DSI_WISR, val, val & WISR_RRS,
 				 TIMEOUT_US);
 	if (ret) {
-		dev_err(dev, "!TIMEOUT! waiting REGU\n");
+		debug("!TIMEOUT! waiting REGU\n");
 		return ret;
 	}
 
@@ -221,14 +226,35 @@ static int dsi_phy_init(void *priv_data)
 	ret = readl_poll_timeout(dsi->base + DSI_WISR, val, val & WISR_PLLLS,
 				 TIMEOUT_US);
 	if (ret) {
-		dev_err(dev, "!TIMEOUT! waiting PLL\n");
+		debug("!TIMEOUT! waiting PLL\n");
 		return ret;
 	}
 
-	/* Enable the DSI wrapper */
-	dsi_set(dsi, DSI_WCR, WCR_DSIEN);
-
 	return 0;
+}
+
+static void dsi_phy_post_set_mode(void *priv_data, unsigned long mode_flags)
+{
+	struct mipi_dsi_device *device = priv_data;
+	struct udevice *dev = device->dev;
+	struct stm32_dsi_priv *dsi = dev_get_priv(dev);
+
+	debug("Set mode %p enable %ld\n", dsi,
+	      mode_flags & MIPI_DSI_MODE_VIDEO);
+
+	if (!dsi)
+		return;
+
+	/*
+	 * DSI wrapper must be enabled in video mode & disabled in command mode.
+	 * If wrapper is enabled in command mode, the display controller
+	 * register access will hang.
+	 */
+
+	if (mode_flags & MIPI_DSI_MODE_VIDEO)
+		dsi_set(dsi, DSI_WCR, WCR_DSIEN);
+	else
+		dsi_clear(dsi, DSI_WCR, WCR_DSIEN);
 }
 
 static int dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
@@ -302,28 +328,51 @@ static int dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
 	return 0;
 }
 
-static const struct dw_mipi_dsi_phy_ops dw_mipi_dsi_stm_phy_ops = {
+static const struct mipi_dsi_phy_ops dsi_stm_phy_ops = {
 	.init = dsi_phy_init,
 	.get_lane_mbps = dsi_get_lane_mbps,
+	.post_set_mode = dsi_phy_post_set_mode,
 };
 
 static int stm32_dsi_attach(struct udevice *dev)
 {
-	struct stm32_dsi_priv *dsi = dev_get_priv(dev);
-	struct dw_mipi_dsi_plat_data *platdata = dev_get_platdata(dev);
-	struct mipi_dsi_device *device = &dsi->device;
+	struct stm32_dsi_priv *priv = dev_get_priv(dev);
+	struct mipi_dsi_device *device = &priv->device;
+	struct mipi_dsi_panel_plat *mplat;
+	struct display_timing timings;
 	int ret;
 
-	platdata->max_data_lanes = 2;
-	platdata->phy_ops = &dw_mipi_dsi_stm_phy_ops;
-
-	ret = uclass_first_device(UCLASS_PANEL, &platdata->panel);
+	ret = uclass_first_device(UCLASS_PANEL, &priv->panel);
 	if (ret) {
 		dev_err(dev, "panel device error %d\n", ret);
 		return ret;
 	}
 
-	ret = dw_mipi_dsi_init_bridge(device);
+	mplat = dev_get_platdata(priv->panel);
+	mplat->device = &priv->device;
+	device->lanes = mplat->lanes;
+	device->format = mplat->format;
+	device->mode_flags = mplat->mode_flags;
+
+	ret = panel_get_display_timing(priv->panel, &timings);
+	if (ret) {
+		ret = fdtdec_decode_display_timing(gd->fdt_blob,
+						   dev_of_offset(priv->panel),
+						   0, &timings);
+		if (ret) {
+			dev_err(dev, "decode display timing error %d\n", ret);
+			return ret;
+		}
+	}
+
+	ret = uclass_get_device(UCLASS_DSI_HOST, 0, &priv->dsi_host);
+	if (ret) {
+		dev_err(dev, "No video dsi host detected %d\n", ret);
+		return ret;
+	}
+
+	ret = dsi_host_init(priv->dsi_host, device, &timings, 2,
+			    &dsi_stm_phy_ops);
 	if (ret) {
 		dev_err(dev, "failed to initialize mipi dsi host\n");
 		return ret;
@@ -334,103 +383,116 @@ static int stm32_dsi_attach(struct udevice *dev)
 
 static int stm32_dsi_set_backlight(struct udevice *dev, int percent)
 {
-	struct dw_mipi_dsi_plat_data *dplat = dev_get_platdata(dev);
-	struct stm32_dsi_priv *dsi = dev_get_priv(dev);
-	struct mipi_dsi_device *device = &dsi->device;
-	struct udevice *panel = dplat->panel;
-	struct mipi_dsi_panel_plat *mplat;
+	struct stm32_dsi_priv *priv = dev_get_priv(dev);
 	int ret;
 
-	mplat = dev_get_platdata(panel);
-	mplat->device = device;
-
-	ret = panel_enable_backlight(panel);
+	ret = panel_enable_backlight(priv->panel);
 	if (ret) {
 		dev_err(dev, "panel %s enable backlight error %d\n",
-			panel->name, ret);
+			priv->panel->name, ret);
 		return ret;
 	}
 
-	dw_mipi_dsi_bridge_enable(device);
+	ret = dsi_host_enable(priv->dsi_host);
+	if (ret) {
+		dev_err(dev, "failed to enable mipi dsi host\n");
+		return ret;
+	}
 
 	return 0;
 }
 
+static int stm32_dsi_bind(struct udevice *dev)
+{
+	int ret;
+
+	ret = device_bind_driver_to_node(dev, "dw_mipi_dsi", "dsihost",
+					 dev_ofnode(dev), NULL);
+	if (ret)
+		return ret;
+
+	return dm_scan_fdt_dev(dev);
+}
+
 static int stm32_dsi_probe(struct udevice *dev)
 {
-	struct stm32_dsi_priv *dsi = dev_get_priv(dev);
-	struct mipi_dsi_device *device = &dsi->device;
+	struct stm32_dsi_priv *priv = dev_get_priv(dev);
+	struct mipi_dsi_device *device = &priv->device;
 	struct reset_ctl rst;
 	struct clk clk;
 	int ret;
 
 	device->dev = dev;
 
-	dsi->base = (void *)dev_read_addr(dev);
-	if ((fdt_addr_t)dsi->base == FDT_ADDR_T_NONE) {
+	priv->base = (void *)dev_read_addr(dev);
+	if ((fdt_addr_t)priv->base == FDT_ADDR_T_NONE) {
 		dev_err(dev, "dsi dt register address error\n");
 		return -EINVAL;
 	}
 
 	if (IS_ENABLED(CONFIG_DM_REGULATOR)) {
 		ret =  device_get_supply_regulator(dev, "phy-dsi-supply",
-						   &dsi->vdd_reg);
+						   &priv->vdd_reg);
 		if (ret && ret != -ENOENT) {
 			dev_err(dev, "Warning: cannot get phy dsi supply\n");
 			return -ENODEV;
 		}
 
-		ret = regulator_set_enable(dsi->vdd_reg, true);
-		if (ret)
-			return -ENODEV;
+		if (ret != -ENOENT) {
+			ret = regulator_set_enable(priv->vdd_reg, true);
+			if (ret)
+				return ret;
+		}
 	}
 
 	ret = clk_get_by_name(device->dev, "pclk", &clk);
 	if (ret) {
 		dev_err(dev, "peripheral clock get error %d\n", ret);
-		regulator_set_enable(dsi->vdd_reg, false);
-		return -ENODEV;
+		goto err_reg;
 	}
 
 	ret = clk_enable(&clk);
 	if (ret) {
 		dev_err(dev, "peripheral clock enable error %d\n", ret);
-		regulator_set_enable(dsi->vdd_reg, false);
-		return -ENODEV;
+		goto err_reg;
 	}
 
 	ret = clk_get_by_name(dev, "ref", &clk);
 	if (ret) {
 		dev_err(dev, "pll reference clock get error %d\n", ret);
-		clk_disable(&clk);
-		regulator_set_enable(dsi->vdd_reg, false);
-		return ret;
+		goto err_clk;
 	}
 
-	dsi->pllref_clk = (unsigned int)clk_get_rate(&clk);
+	priv->pllref_clk = (unsigned int)clk_get_rate(&clk);
 
 	ret = reset_get_by_index(device->dev, 0, &rst);
 	if (ret) {
 		dev_err(dev, "missing dsi hardware reset\n");
-		clk_disable(&clk);
-		regulator_set_enable(dsi->vdd_reg, false);
-		return -ENODEV;
+		goto err_clk;
 	}
 
 	/* Reset */
 	reset_deassert(&rst);
 
 	/* check hardware version */
-	dsi->hw_version = dsi_read(dsi, DSI_VERSION) & VERSION;
-	if (dsi->hw_version != HWVER_130 &&
-	    dsi->hw_version != HWVER_131) {
+	priv->hw_version = dsi_read(priv, DSI_VERSION) & VERSION;
+	if (priv->hw_version != HWVER_130 &&
+	    priv->hw_version != HWVER_131) {
 		dev_err(dev, "bad dsi hardware version\n");
 		clk_disable(&clk);
-		regulator_set_enable(dsi->vdd_reg, false);
+		if (IS_ENABLED(CONFIG_DM_REGULATOR))
+			regulator_set_enable(priv->vdd_reg, false);
 		return -ENODEV;
 	}
 
 	return 0;
+err_clk:
+	clk_disable(&clk);
+err_reg:
+	if (IS_ENABLED(CONFIG_DM_REGULATOR))
+		regulator_set_enable(priv->vdd_reg, false);
+
+	return ret;
 }
 
 struct video_bridge_ops stm32_dsi_ops = {
@@ -447,9 +509,8 @@ U_BOOT_DRIVER(stm32_dsi) = {
 	.name				= "stm32-display-dsi",
 	.id				= UCLASS_VIDEO_BRIDGE,
 	.of_match			= stm32_dsi_ids,
-	.bind				= dm_scan_fdt_dev,
+	.bind				= stm32_dsi_bind,
 	.probe				= stm32_dsi_probe,
 	.ops				= &stm32_dsi_ops,
 	.priv_auto_alloc_size		= sizeof(struct stm32_dsi_priv),
-	.platdata_auto_alloc_size	= sizeof(struct dw_mipi_dsi_plat_data),
 };
