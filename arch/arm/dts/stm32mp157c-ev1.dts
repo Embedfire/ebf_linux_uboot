@@ -98,7 +98,7 @@
 		};
 	};
 
-	sound {
+	sound: sound {
 		compatible = "audio-graph-card";
 		label = "STM32MP1-EV";
 		routing =
@@ -325,7 +325,7 @@
 		};
 	};
 
-	panel-dsi@0 {
+	panel_dsi: panel-dsi@0 {
 		compatible = "raydium,rm68200";
 		reg = <0>;
 		reset-gpios = <&gpiof 15 GPIO_ACTIVE_LOW>;
@@ -495,6 +495,7 @@
 	gt9147: goodix_ts@5d {
 		compatible = "goodix,gt9147";
 		reg = <0x5d>;
+		panel = <&panel_dsi>;
 		status = "okay";
 
 		irq-gpios = <&stmfx_pinctrl 14 GPIO_ACTIVE_HIGH>;
@@ -649,7 +650,7 @@
 &spdifrx {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&spdifrx_pins_a>;
-	pinctrl-1 = <&spdifrx_sleep_pins_a>;
+	pinctrl-1 = <&spdifrx_pins_a>;
 	status = "okay";
 
 	spdifrx_port: port {
@@ -717,6 +718,7 @@
 	pinctrl-0 = <&usart3_pins_a>;
 	pinctrl-1 = <&usart3_sleep_pins_a>;
 	pinctrl-2 = <&usart3_idle_pins_a>;
+	st,hw-flow-ctrl;
 	status = "disabled";
 };
 

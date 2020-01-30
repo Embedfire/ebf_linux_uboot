@@ -47,7 +47,7 @@
 		};
 	};
 
-	panel@0 {
+	panel: panel@0 {
 		compatible = "orisetech,otm8009a";
 		reg = <0>;
 		reset-gpios = <&gpioe 4 GPIO_ACTIVE_LOW>;
@@ -71,6 +71,7 @@
 		interrupt-controller;
 		touchscreen-size-x = <480>;
 		touchscreen-size-y = <800>;
+		panel = <&panel>;
 		status = "okay";
 	};
 	touchscreen@38 {
@@ -81,6 +82,7 @@
 		interrupt-controller;
 		touchscreen-size-x = <480>;
 		touchscreen-size-y = <800>;
+		panel = <&panel>;
 		status = "okay";
 	};
 };

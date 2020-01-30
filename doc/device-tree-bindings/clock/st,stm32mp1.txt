@@ -84,6 +84,10 @@ Optional Properties:
   are listed with associated index 0 to 3 (st,pll@0 to st,pll@3).
   PLLx is off when the associated node is absent.
 
+  For PLL1, when the node is absent, the frequency of the OPP node is used
+  to compute the PLL setting (see compatible "operating-points-v2" in
+  opp/opp.txt for details).
+
   Here are the available properties for each PLL node:
 
     - cfg: The parameters for PLL configuration in the following order:
