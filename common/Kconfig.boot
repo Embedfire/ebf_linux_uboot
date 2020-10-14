@@ -709,7 +709,7 @@ config AUTOBOOT
 
 config BOOTDELAY
 	int "delay in seconds before automatically booting"
-	default 2
+	default 0
 	depends on AUTOBOOT
 	help
 	  Delay before automatically running bootcmd;
