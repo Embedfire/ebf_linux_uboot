@@ -1,0 +1,7 @@
+MX6ULLFIRE BOARD
+M:	laoyening
+S:	Maintained
+F:	board/freescale/mx6ullevk/
+F:	include/configs/mx6ullevk.h
+F:	configs/mx6ull_fire_mmc_defconfig
+F:	configs/mx6ull_fire_nand_defconfig

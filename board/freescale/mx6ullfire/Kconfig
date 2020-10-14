@@ -1,0 +1,12 @@
+if TARGET_MX6ULL_FIRE
+
+config SYS_BOARD
+	default "mx6ullfire"
+
+config SYS_VENDOR
+	default "freescale"
+
+config SYS_CONFIG_NAME
+	default "mx6ullfire"
+
+endif
