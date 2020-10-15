@@ -66,22 +66,22 @@
 		"mtdparts=gpmi-nand:8m(uboot),-(rootfs)coherent_pool=1M "\
 		"net.ifnames=0 vt.global_cursor_default=0 quiet ${cmdline}\0"\
 	"bootcmd=ubi part rootfs;ubifsmount ubi0;"\
-		"if test -n ${flash_firmware}; then "  \
-					"echo setting flash firmware...;"  \
-					"setenv cmdline ${storage_media};"  \
-		"fi;" \
 		"echo loading /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
+			"if test -n ${flash_firmware}; then "  \
+					"echo setting flash firmware...;"  \
+					"setenv cmdline ${storage_media};"  \
+			"fi;" \
 			"echo loading vmlinuz-4.19.71-imx-r1 ...; "\
 			"ubifsload 0x80800000 /boot/vmlinuz-4.19.71-imx-r1;"\
 			"echo loading imx6ull-seeed-npi.dtb ...; "\
 			"ubifsload 0x83000000 /boot/dtbs/4.19.71-imx-r1/imx6ull-seeed-npi.dtb;"\
-			"dtfile 0x83000000 0x88000000  /boot/uEnv.txt ${loadaddr};"   \
+			"dtfile 0x83000000 0x87000000  /boot/uEnv.txt ${loadaddr};"   \
 			"ubifsload 0x88000000 /boot/initrd.img-4.19.71-imx-r1;"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
-			"bootz 0x80800000 0x88000000:47e277 0x83000000;"	\
+			"bootz 0x80800000 0x88000000:${filesize} 0x83000000;"	\
 		"fi;\0"
 #else
 #define CONFIG_EXTRA_ENV_SETTINGS \
@@ -105,15 +105,15 @@
 	"mmcargs=setenv bootargs console=${console},${baudrate} " \
 		"root=${mmcroot}\0" \
 	"loadbootscript=" \
-		"fatload mmc ${mmcdev}:${mmcpart} ${loadaddr} ${script};\0" \
+		"load mmc ${mmcdev}:${mmcpart} ${loadaddr} ${script};\0" \
 	"loaduEnv=" \
-		"fatload ${devtype} ${bootpart} ${loadaddr} /uEnv.txt;\0" \
+		"load ${devtype} ${bootpart} ${loadaddr} /uEnv.txt;\0" \
 	"importbootenv=echo Importing environment from ${devtype} ...; " \
 		"env import -t ${loadaddr} ${filesize}\0" \
 	"bootscript=echo Running bootscript from mmc ...; " \
 		"source\0" \
-	"loadimage=fatload mmc ${mmcdev}:${mmcpart} ${loadaddr} ${image}\0" \
-	"loadfdt=fatload mmc ${mmcdev}:${mmcpart} ${fdt_addr} ${fdt_file}\0" \
+	"loadimage=load mmc ${mmcdev}:${mmcpart} ${loadaddr} ${image};\0" \
+	"loadfdt=load mmc ${mmcdev}:${mmcpart} ${fdt_addr} ${fdt_file};\0" \
 	"mmcboot=echo Booting from mmc ...; " \
 		"run mmcargs; " \
 		"if test ${boot_fdt} = yes || test ${boot_fdt} = try; then " \
@@ -167,24 +167,24 @@
 		"root=/dev/mmcblk${mmcdev}p2 rw " \
 		"rootfstype=ext4 " \
 		"rootwait coherent_pool=1M net.ifnames=0 vt.global_cursor_default=0 quiet ${cmdline}\0" \
-	"boot=${devtype} dev ${mmcdev}; " \
-		"if test -n ${flash_firmware}; then "  \
-					"echo setting flash firmware...;"  \
-					"setenv cmdline ${storage_media};"  \
-		"fi;" \
+	"boot=${devtype} dev ${mmcdev};mmc rescan; " \
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
+			"if test -n ${flash_firmware}; then "  \
+					"echo setting flash firmware...;"  \
+					"setenv cmdline ${storage_media};"  \
+			"fi;" \
 			"run args_mmc_old;" \
 			"echo loading vmlinuz-4.19.71-imx-r1 ...; "\
 			"load ${devtype} ${bootpart} 0x80800000 /vmlinuz-4.19.71-imx-r1;"\
 			"echo loading imx6ull-seeed-npi.dtb ...; "\
 			"load ${devtype} ${bootpart} 0x83000000 /dtbs/4.19.71-imx-r1/imx6ull-seeed-npi.dtb;"\
-			"dtfile 0x83000000 0x88000000  /uEnv.txt ${loadaddr};"   \
+			"dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
 			"load ${devtype} ${bootpart} 0x88000000 /initrd.img-4.19.71-imx-r1;"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
-			"bootz 0x80800000 0x88000000:47e277 0x83000000;"	\
+			"bootz 0x80800000 0x88000000:${filesize} 0x83000000;"	\
 		"fi;\0" \
 	BOOTENV
 /*
