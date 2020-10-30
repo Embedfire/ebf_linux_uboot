@@ -73,12 +73,12 @@
 					"echo setting flash firmware...;"  \
 					"setenv cmdline ${storage_media};"  \
 			"fi;" \
-			"echo loading vmlinuz-4.19.71-imx-r1 ...; "\
-			"ubifsload 0x80800000 /boot/vmlinuz-4.19.71-imx-r1;"\
-			"echo loading imx6ull-seeed-npi.dtb ...; "\
-			"ubifsload 0x83000000 /boot/dtbs/4.19.71-imx-r1/imx6ull-seeed-npi.dtb;"\
+			"echo loading vmlinuz-${uname_r} ...; "\
+			"ubifsload 0x80800000 /boot/vmlinuz-${uname_r};"\
+			"echo loading ${dtb} ...; "\
+			"ubifsload 0x83000000 /boot/dtbs/${uname_r}/${dtb};"\
 			"dtfile 0x83000000 0x87000000  /boot/uEnv.txt ${loadaddr};"   \
-			"ubifsload 0x88000000 /boot/initrd.img-4.19.71-imx-r1;"\
+			"ubifsload 0x88000000 /boot/initrd.img-${uname_r};"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
 			"bootz 0x80800000 0x88000000:${filesize} 0x83000000;"	\
@@ -176,12 +176,12 @@
 					"setenv cmdline ${storage_media};"  \
 			"fi;" \
 			"run args_mmc_old;" \
-			"echo loading vmlinuz-4.19.71-imx-r1 ...; "\
-			"load ${devtype} ${bootpart} 0x80800000 /vmlinuz-4.19.71-imx-r1;"\
-			"echo loading imx6ull-seeed-npi.dtb ...; "\
-			"load ${devtype} ${bootpart} 0x83000000 /dtbs/4.19.71-imx-r1/imx6ull-seeed-npi.dtb;"\
+			"echo loading vmlinuz-${uname_r} ...; "\
+			"load ${devtype} ${bootpart} 0x80800000 /vmlinuz-${uname_r};"\
+			"echo loading ${dtb} ...; "\
+			"load ${devtype} ${bootpart} 0x83000000 /dtbs/${uname_r}/${dtb};"\
 			"dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
-			"load ${devtype} ${bootpart} 0x88000000 /initrd.img-4.19.71-imx-r1;"\
+			"load ${devtype} ${bootpart} 0x88000000 /initrd.img-${uname_r};"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
 			"bootz 0x80800000 0x88000000:${filesize} 0x83000000;"	\
