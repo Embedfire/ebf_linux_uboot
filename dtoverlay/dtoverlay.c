@@ -65,7 +65,7 @@ static void dtoverlay_stdio_logging(dtoverlay_logging_type_t type,
 #define phandle_debug if (0) dtoverlay_debug
 
 static DTOVERLAY_LOGGING_FUNC *dtoverlay_logging_func = dtoverlay_stdio_logging;
-static int dtoverlay_debug_enabled = 1;
+static int dtoverlay_debug_enabled = 0;
 
 uint8_t dtoverlay_read_u8(const void *src, int off)
 {
@@ -1750,6 +1750,8 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
 
    len = strlen(dt_file) - 5;
 
+   dtoverlay_debug("loading overlay：%s\n",dt_file);
+
    if ((len > 0) && (strcmp(dt_file + len, ".dtbo") == 0))
    {
       #if defined(CONFIG_SYS_BOOT_NAND)
@@ -1776,8 +1778,7 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
 
       #endif
    }
-   printf("loading overlay：%s\n",dt_file);
-
+   
    // Record the total size before any expansion
    dtb_len = fdt_totalsize((void *)fdt);
 
