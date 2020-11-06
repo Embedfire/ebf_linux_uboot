@@ -927,12 +927,12 @@ int ubifs_load(char *filename, u32 addr, u32 size)
 	loff_t actread;
 	int err;
 
-	printf("Loading file '%s' to addr 0x%08x...\n", filename, addr);
+	debug("Loading file '%s' to addr 0x%08x...\n", filename, addr);
 
 	err = ubifs_read(filename, (void *)(uintptr_t)addr, 0, size, &actread);
 	if (err == 0) {
 		env_set_hex("filesize", actread);
-		printf("Done\n");
+		debug("Done\n");
 	}
 
 	return err;
