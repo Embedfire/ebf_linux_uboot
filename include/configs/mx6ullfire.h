@@ -32,7 +32,6 @@
 #define CONFIG_SYS_NAND_BASE		0x40000000
 #define CONFIG_SYS_NAND_5_ADDR_CYCLE
 #define CONFIG_SYS_NAND_ONFI_DETECTION
-
 /* DMA stuff, needed for GPMI/MXS NAND support */
 #endif
 
@@ -56,9 +55,8 @@
 	"fdt_high=0xffffffff\0"	  \
 	"console=ttymxc0\0" \
 	"console=ttymxc0\0" \
-	"storage_media=init=/opt/scripts/tools/Nand/init-Nand-flasher-v1.sh\0" \
 	"loaduEnv=" \
-		"ubifsload ${loadaddr} /boot/uEnv.txt;\0" \
+		"load ramblock 0:1 ${loadaddr} /uEnv.txt;\0" \
 	"importbootenv=echo Importing environment from ${devtype} ...; " \
 		"env import -t ${loadaddr} ${filesize}\0" \
 	"bootargs=console=ttymxc0 bootargs=console=ttymxc0,115200 ubi.mtd=1 "  \
@@ -66,19 +64,21 @@
 		"mtdparts=gpmi-nand:8m(uboot),-(rootfs)coherent_pool=1M "\
 		"net.ifnames=0 vt.global_cursor_default=0 quiet ${cmdline}\0"\
 	"bootcmd=ubi part rootfs;ubifsmount ubi0;"\
+		"ubifsload ${ramblock_addr} /lib/fireware/fatboot.img;"\
 		"echo loading /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
 			"if test -n ${flash_firmware}; then "  \
 					"echo setting flash firmware...;"  \
+					"mmc list;"  \
 					"setenv cmdline ${storage_media};"  \
 			"fi;" \
 			"echo loading vmlinuz-${uname_r} ...; "\
-			"ubifsload 0x80800000 /boot/vmlinuz-${uname_r};"\
+			"load ramblock 0:1 0x80800000 /vmlinuz-${uname_r};"\
 			"echo loading ${dtb} ...; "\
-			"ubifsload 0x83000000 /boot/dtbs/${uname_r}/${dtb};"\
-			"dtfile 0x83000000 0x87000000  /boot/uEnv.txt ${loadaddr};"   \
-			"ubifsload 0x88000000 /boot/initrd.img-${uname_r};"\
+			"load ramblock 0:1 0x83000000 /dtbs/${uname_r}/${dtb};"\
+			"dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
+			"load ramblock 0:1 0x88000000 /initrd.img-${uname_r};"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
 			"bootz 0x80800000 0x88000000:${filesize} 0x83000000;"	\
@@ -96,7 +96,6 @@
 	"ip_dyn=yes\0" \
 	"ethaddr=00:05:9f:05:d2:36\0" \
 	"eth1addr=00:05:9f:05:d2:37\0" \
-	"storage_media=init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh\0" \
 	"videomode=video=ctfb:x:480,y:272,depth:24,pclk:108695,le:8,ri:4,up:2,lo:4,hs:41,vs:10,sync:0,vmode:0\0" \
 	"mmcdev="__stringify(CONFIG_SYS_MMC_ENV_DEV)"\0" \
 	"mmcpart=" __stringify(CONFIG_SYS_MMC_IMG_LOAD_PART) "\0" \
@@ -173,6 +172,7 @@
 			"run importbootenv;" \
 			"if test -n ${flash_firmware}; then "  \
 					"echo setting flash firmware...;"  \
+					"mmc list;"  \
 					"setenv cmdline ${storage_media};"  \
 			"fi;" \
 			"run args_mmc_old;" \

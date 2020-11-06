@@ -8,6 +8,7 @@
 #include <common.h>
 #include <log.h>
 #include <mmc.h>
+#include <env.h>
 #include <dm.h>
 #include <dm/device-internal.h>
 #include <dm/device_compat.h>
@@ -340,6 +341,11 @@ void print_mmc_devices(char separator)
 		printf("%s: %d", m->cfg->name, mmc_get_blk_desc(m)->devnum);
 		if (mmc_type)
 			printf(" (%s)", mmc_type);
+		
+		if(strcmp(mmc_type,"eMMC")) 
+			env_set("storage_media","init=/opt/scripts/tools/Nand/init-Nand-flasher-v1.sh");
+		else
+			env_set("storage_media","init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh");
 	}
 
 	printf("\n");
