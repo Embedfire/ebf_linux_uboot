@@ -22,6 +22,7 @@
 #include <net.h>
 #include <asm/cache.h>
 #include <u-boot/crc.h>
+#include <ramblockdev.h>
 /* TODO: can we just include all these headers whether needed or not? */
 #if defined(CONFIG_CMD_BEDBUG)
 #include <bedbug/type.h>
@@ -790,6 +791,9 @@ static init_fnc_t init_sequence_r[] = {
 	initr_pvblock,
 #endif
 	initr_env,
+#ifdef CONFIG_RAMBLOCK
+	ramblock_init,
+#endif
 #ifdef CONFIG_SYS_BOOTPARAMS_LEN
 	initr_malloc_bootparams,
 #endif
