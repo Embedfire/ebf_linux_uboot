@@ -64,7 +64,7 @@
 		"mtdparts=gpmi-nand:8m(uboot),-(rootfs)coherent_pool=1M "\
 		"net.ifnames=0 vt.global_cursor_default=0 quiet ${cmdline}\0"\
 	"bootcmd=ubi part rootfs;ubifsmount ubi0;"\
-		"ubifsload ${ramblock_addr} /lib/fireware/fatboot.img;"\
+		"ubifsload ${ramblock_addr} /lib/firmware/fatboot.img;"\
 		"echo loading /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
