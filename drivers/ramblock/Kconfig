@@ -1,0 +1,6 @@
+config RAMBLOCK
+	bool "Enable RAMBLOCK using Driver Model"
+	depends on DM
+	help
+	  Use RAM to simulate block devices
+

@@ -121,5 +121,5 @@ obj-$(CONFIG_MACH_PIC32) += ddr/microchip/
 obj-$(CONFIG_DM_HWSPINLOCK) += hwspinlock/
 obj-$(CONFIG_DM_RNG) += rng/
 endif
-
+obj-$(CONFIG_RAMBLOCK) += ramblock/
 obj-y += soc/
