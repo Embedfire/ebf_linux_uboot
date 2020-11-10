@@ -262,6 +262,7 @@
 	pinctrl-names = "default", "sleep";
 	phy-mode = "rgmii-id";
 	max-speed = <1000>;
+	reset-gpios = <&gpiog 0 GPIO_ACTIVE_LOW>;
 	phy-handle = <&phy0>;
 
 	mdio0 {
