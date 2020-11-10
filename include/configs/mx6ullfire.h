@@ -68,9 +68,9 @@
 		"echo loading /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
+			"mmc list;"  \
 			"if test -n ${flash_firmware}; then "  \
 					"echo setting flash firmware...;"  \
-					"mmc list;"  \
 					"setenv cmdline ${storage_media};"  \
 			"fi;" \
 			"echo loading vmlinuz-${uname_r} ...; "\
@@ -170,9 +170,9 @@
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
+			"mmc list;"  \
 			"if test -n ${flash_firmware}; then "  \
 					"echo setting flash firmware...;"  \
-					"mmc list;"  \
 					"setenv cmdline ${storage_media};"  \
 			"fi;" \
 			"run args_mmc_old;" \

@@ -342,10 +342,24 @@ void print_mmc_devices(char separator)
 		if (mmc_type)
 			printf(" (%s)", mmc_type);
 		
-		if(strcmp(mmc_type,"eMMC")) 
+		if(strcmp(mmc_type,"eMMC")) {
+
+			char const *dtb_s = env_get("nand_dtb");
+
 			env_set("storage_media","init=/opt/scripts/tools/Nand/init-Nand-flasher-v1.sh");
-		else
-			env_set("storage_media","init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh");
+
+			env_set("dtb",dtb_s);
+			
+		}
+		else{
+			
+			char const *dtb_s = env_get("mmc_dtb");
+
+			env_set("dtb",dtb_s);
+
+			
+		}
+			
 	}
 
 	printf("\n");
