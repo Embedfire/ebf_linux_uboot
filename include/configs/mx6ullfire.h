@@ -62,7 +62,7 @@
 	"bootargs=console=ttymxc0 bootargs=console=ttymxc0,115200 ubi.mtd=1 "  \
 		"root=ubi0:rootfs rw rootfstype=ubifs "		     \
 		"mtdparts=gpmi-nand:8m(uboot),-(rootfs)coherent_pool=1M "\
-		"net.ifnames=0 vt.global_cursor_default=0 quiet ${cmdline}\0"\
+		"net.ifnames=0 vt.global_cursor_default=0 ${cmdline}\0"\
 	"bootcmd=ubi part rootfs;ubifsmount ubi0;"\
 		"ubifsload ${ramblock_addr} /lib/firmware/fatboot.img;"\
 		"echo loading /uEnv.txt ...; "\
@@ -165,7 +165,7 @@
 	"args_mmc_old=setenv bootargs console=ttymxc0 " \
 		"root=/dev/mmcblk${mmcdev}p2 rw " \
 		"rootfstype=ext4 " \
-		"rootwait coherent_pool=1M net.ifnames=0 vt.global_cursor_default=0 quiet ${cmdline}\0" \
+		"rootwait coherent_pool=1M net.ifnames=0 vt.global_cursor_default=0 ${cmdline}\0" \
 	"boot=${devtype} dev ${mmcdev};mmc rescan; " \
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
