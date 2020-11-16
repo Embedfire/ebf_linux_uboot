@@ -355,6 +355,8 @@ void print_mmc_devices(char separator)
 			
 			char const *dtb_s = env_get("mmc_dtb");
 
+			env_set("storage_media","init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh");
+			
 			env_set("dtb",dtb_s);
 
 			
