@@ -65,7 +65,7 @@ static void dtoverlay_stdio_logging(dtoverlay_logging_type_t type,
 #define phandle_debug if (0) dtoverlay_debug
 
 static DTOVERLAY_LOGGING_FUNC *dtoverlay_logging_func = dtoverlay_stdio_logging;
-static int dtoverlay_debug_enabled = 0;
+static int dtoverlay_debug_enabled = 1;
 
 uint8_t dtoverlay_read_u8(const void *src, int off)
 {
@@ -1761,7 +1761,7 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
       #else
 
       int dev = mmc_get_env_dev();
-      if (dev)
+      if (!dev)
       fs_set_blk_dev("mmc", "0:1", FS_TYPE_ANY);
       else 
       fs_set_blk_dev("mmc", "1:1", FS_TYPE_ANY);
@@ -2134,7 +2134,7 @@ void load_env_file(char* env_name,ulong file_addr,loff_t* len_read)
 
    int dev = mmc_get_env_dev();
 
-   if (dev)
+   if (!dev)
       fs_set_blk_dev("mmc", "0:1", FS_TYPE_ANY);
    else 
       fs_set_blk_dev("mmc", "1:1", FS_TYPE_ANY);
