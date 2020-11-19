@@ -65,7 +65,7 @@ static void dtoverlay_stdio_logging(dtoverlay_logging_type_t type,
 #define phandle_debug if (0) dtoverlay_debug
 
 static DTOVERLAY_LOGGING_FUNC *dtoverlay_logging_func = dtoverlay_stdio_logging;
-static int dtoverlay_debug_enabled = 1;
+static int dtoverlay_debug_enabled = 0;
 
 uint8_t dtoverlay_read_u8(const void *src, int off)
 {
