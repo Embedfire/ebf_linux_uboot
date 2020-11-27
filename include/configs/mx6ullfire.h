@@ -47,8 +47,6 @@
 
 #if defined(CONFIG_SYS_BOOT_NAND)
 #define CONFIG_EXTRA_ENV_SETTINGS \
-	"ethaddr=00:05:9f:05:d2:36\0" \
-	"eth1addr=00:05:9f:05:d2:37\0" \
 	"panel=TFT50AB\0" \
 	"splashimage=0x82000000\0" \
 	"fdt_addr=0x83000000\0" \
@@ -93,8 +91,6 @@
 	"fdt_addr=0x83000000\0" \
 	"boot_fdt=try\0" \
 	"ip_dyn=yes\0" \
-	"ethaddr=00:05:9f:05:d2:36\0" \
-	"eth1addr=00:05:9f:05:d2:37\0" \
 	"videomode=video=ctfb:x:480,y:272,depth:24,pclk:108695,le:8,ri:4,up:2,lo:4,hs:41,vs:10,sync:0,vmode:0\0" \
 	"mmcdev="__stringify(CONFIG_SYS_MMC_ENV_DEV)"\0" \
 	"mmcpart=" __stringify(CONFIG_SYS_MMC_IMG_LOAD_PART) "\0" \
