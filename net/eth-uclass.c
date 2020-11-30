@@ -571,6 +571,7 @@ static int eth_post_probe(struct udevice *dev)
 		       dev->name, dev->seq, pdata->enetaddr);
 		//Random once
 		eth_env_set_enetaddr_by_index("eth", dev->seq, pdata->enetaddr);
+		env_save();
 #else
 		printf("\nError: %s address not set.\n",
 		       dev->name);
