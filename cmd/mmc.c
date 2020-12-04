@@ -552,6 +552,28 @@ static int do_mmc_dev(struct cmd_tbl *cmdtp, int flag,
 	return CMD_RET_SUCCESS;
 }
 
+static int do_mmc_check(struct cmd_tbl *cmdtp, int flag,
+		       int argc, char *const argv[])
+{
+	int part = 0, ret;
+	struct mmc *mmc;
+
+	//init and check eMMC if exist
+	mmc = init_mmc_device(1, true);
+	if (!mmc)
+		printf("mmc1:no exist!\n");
+
+	ret = blk_select_hwpart_devnum(IF_TYPE_MMC, 1, part);
+	if (ret)
+		env_set("second_flash","nand");
+	else
+		env_set("second_flash","emmc");
+
+	curr_device = 1;
+	
+	return CMD_RET_SUCCESS;
+}
+
 static int do_mmc_list(struct cmd_tbl *cmdtp, int flag,
 		       int argc, char *const argv[])
 {
@@ -947,6 +969,7 @@ static struct cmd_tbl cmd_mmc[] = {
 	U_BOOT_CMD_MKENT(part, 1, 1, do_mmc_part, "", ""),
 	U_BOOT_CMD_MKENT(dev, 3, 0, do_mmc_dev, "", ""),
 	U_BOOT_CMD_MKENT(list, 1, 1, do_mmc_list, "", ""),
+	U_BOOT_CMD_MKENT(check, 1, 1, do_mmc_check, "", ""),
 #if CONFIG_IS_ENABLED(MMC_HW_PARTITIONING)
 	U_BOOT_CMD_MKENT(hwpartition, 28, 0, do_mmc_hwpartition, "", ""),
 #endif
@@ -1005,6 +1028,7 @@ U_BOOT_CMD(
 	"mmc rescan\n"
 	"mmc part - lists available partition on current mmc device\n"
 	"mmc dev [dev] [part] - show or set current mmc device [partition]\n"
+	"mmc check - lists available devices\n"
 	"mmc list - lists available devices\n"
 	"mmc wp - power on write protect boot partitions\n"
 #if CONFIG_IS_ENABLED(MMC_HW_PARTITIONING)

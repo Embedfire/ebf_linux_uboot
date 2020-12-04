@@ -322,7 +322,6 @@ void print_mmc_devices(char separator)
 	struct udevice *dev;
 	char *mmc_type;
 	bool first = true;
-	int mmc_num = 0;
 
 	for (uclass_first_device(UCLASS_MMC, &dev);
 	     dev;
@@ -341,29 +340,10 @@ void print_mmc_devices(char separator)
 
 		printf("%s: %d", m->cfg->name, mmc_get_blk_desc(m)->devnum);
 		if (mmc_type)
-			printf(" (%s)", mmc_type);
-		
-		mmc_num++;
-			
-	}
-	if(2!=mmc_num) {
-
-			char const *dtb_s = env_get("nand_dtb");
-
-			env_set("storage_media","init=/opt/scripts/tools/Nand/init-Nand-flasher-v1.sh");
-
-			env_set("dtb",dtb_s);
-			
-		}
-	else{
-		
-		char const *dtb_s = env_get("mmc_dtb");
-
-		env_set("storage_media","init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh");
-		
-		env_set("dtb",dtb_s);
+			printf(" (%s)", mmc_type);		
 	}
 	printf("\n");
+
 }
 
 #else

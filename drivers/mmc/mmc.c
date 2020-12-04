@@ -3019,7 +3019,7 @@ static int mmc_probe(struct bd_info *bis)
 		if (ret)
 			pr_err("%s - probe failed: %d\n", dev->name, ret);
 	}
-
+	
 	return 0;
 }
 #else

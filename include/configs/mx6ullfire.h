@@ -60,12 +60,18 @@
 	"bootargs=console=ttymxc0 bootargs=console=ttymxc0,115200 ubi.mtd=1 "  \
 		"root=ubi0:rootfs rw rootfstype=ubifs "		     \
 		"mtdparts=gpmi-nand:8m(uboot),-(rootfs) ${cmdline} ${flashtype}\0"\
-	"bootcmd=ubi part rootfs;ubifsmount ubi0;"\
+	"bootcmd=mmc check;ubi part rootfs;ubifsmount ubi0;"\
 		"ubifsload ${ramblock_addr} /lib/firmware/fatboot.img;"\
 		"echo loading /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
-			"mmc list;"  \
+			"if test ${second_flash} = emmc; then " \
+					"setenv dtb ${mmc_dtb};"  \
+					"setenv storage_media init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh;"  \
+				"else " \
+					"setenv dtb ${nand_dtb};"  \
+					"setenv storage_media init=/opt/scripts/tools/Nand/init-Nand-flasher-v1.sh;"  \
+				"fi; " \
 			"if test -n ${flash_firmware}; then "  \
 					"echo setting flash firmware...;"  \
 					"setenv flashtype ${storage_media};"  \
@@ -161,11 +167,17 @@
 		"root=/dev/mmcblk${mmcdev}p2 rw " \
 		"rootfstype=ext4 " \
 		"rootwait ${cmdline} ${flashtype}\0" \
-	"boot=${devtype} dev ${mmcdev};mmc rescan; " \
+	"boot=mmc check;${devtype} dev ${mmcdev};mmc rescan; " \
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
-			"mmc list;"  \
+			"if test ${second_flash} = emmc; then " \
+					"setenv dtb ${mmc_dtb};"  \
+					"setenv storage_media init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh;"  \
+				"else " \
+					"setenv dtb ${nand_dtb};"  \
+					"setenv storage_media init=/opt/scripts/tools/Nand/init-Nand-flasher-v1.sh;"  \
+				"fi; " \
 			"if test -n ${flash_firmware}; then "  \
 					"echo setting flash firmware...;"  \
 					"setenv flashtype ${storage_media};"  \
