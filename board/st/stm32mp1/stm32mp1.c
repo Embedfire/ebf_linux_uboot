@@ -839,9 +839,12 @@ enum env_location env_get_location(enum env_operation op, int prio)
 		return ENVL_UNKNOWN;
 
 	switch (bootmode & TAMP_BOOT_DEVICE_MASK) {
-#ifdef CONFIG_ENV_IS_IN_EXT4
 	case BOOT_FLASH_SD:
 	case BOOT_FLASH_EMMC:
+#ifdef CONFIG_ENV_IS_IN_FAT
+		return ENVL_FAT;
+#endif			
+#ifdef CONFIG_ENV_IS_IN_EXT4
 		return ENVL_EXT4;
 #endif
 #ifdef CONFIG_ENV_IS_IN_UBI
@@ -856,6 +859,29 @@ enum env_location env_get_location(enum env_operation op, int prio)
 		return ENVL_NOWHERE;
 	}
 }
+
+#if defined(CONFIG_ENV_IS_IN_FAT)
+const char *env_fat_get_intf(void)
+{
+	u32 bootmode = get_bootmode();
+
+	switch (bootmode & TAMP_BOOT_DEVICE_MASK) {
+	case BOOT_FLASH_SD:
+	case BOOT_FLASH_EMMC:
+		return "mmc";
+	default:
+		return "";
+	}
+}
+
+const char *env_fat_get_dev_part(void)
+{
+	static char *const dev_part[] = {"0:auto", "1:auto", "2:auto"};
+	u32 bootmode = get_bootmode();
+
+	return dev_part[(bootmode & TAMP_BOOT_INSTANCE_MASK) - 1];
+}
+#endif
 
 #if defined(CONFIG_ENV_IS_IN_EXT4)
 const char *env_ext4_get_intf(void)

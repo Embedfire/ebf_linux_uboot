@@ -30,6 +30,16 @@
 # endif
 #endif
 
+__weak const char *env_fat_get_intf(void)
+{
+	return (const char *)CONFIG_ENV_FAT_INTERFACE;
+}
+
+__weak const char *env_fat_get_dev_part(void)
+{
+	return (const char *)CONFIG_ENV_FAT_DEVICE_AND_PART;
+}
+
 #ifdef CMD_SAVEENV
 static int env_fat_save(void)
 {
@@ -39,13 +49,14 @@ static int env_fat_save(void)
 	int dev, part;
 	int err;
 	loff_t size;
+	const char *ifname = env_fat_get_intf();
+	const char *dev_and_part = env_fat_get_dev_part();
 
 	err = env_export(&env_new);
 	if (err)
 		return err;
 
-	part = blk_get_device_part_str(CONFIG_ENV_FAT_INTERFACE,
-					CONFIG_ENV_FAT_DEVICE_AND_PART,
+	part = blk_get_device_part_str(ifname,dev_and_part,
 					&dev_desc, &info, 1);
 	if (part < 0)
 		return 1;
@@ -57,7 +68,7 @@ static int env_fat_save(void)
 		 * will calling it. The missing \n is intentional.
 		 */
 		printf("Unable to use %s %d:%d... ",
-		       CONFIG_ENV_FAT_INTERFACE, dev, part);
+		       ifname, dev, part);
 		return 1;
 	}
 
@@ -69,7 +80,7 @@ static int env_fat_save(void)
 		 * will calling it. The missing \n is intentional.
 		 */
 		printf("Unable to write \"%s\" from %s%d:%d... ",
-			CONFIG_ENV_FAT_FILE, CONFIG_ENV_FAT_INTERFACE, dev, part);
+			CONFIG_ENV_FAT_FILE, ifname, dev, part);
 		return 1;
 	}
 
@@ -86,13 +97,15 @@ static int env_fat_load(void)
 	int dev, part;
 	int err;
 
+	const char *ifname = env_fat_get_intf();
+	const char *dev_and_part = env_fat_get_dev_part();
+
 #ifdef CONFIG_MMC
-	if (!strcmp(CONFIG_ENV_FAT_INTERFACE, "mmc"))
+	if (!strcmp(ifname, "mmc"))
 		mmc_initialize(NULL);
 #endif
 
-	part = blk_get_device_part_str(CONFIG_ENV_FAT_INTERFACE,
-					CONFIG_ENV_FAT_DEVICE_AND_PART,
+	part = blk_get_device_part_str(ifname,dev_and_part,
 					&dev_desc, &info, 1);
 	if (part < 0)
 		goto err_env_relocate;
@@ -104,7 +117,7 @@ static int env_fat_load(void)
 		 * will calling it. The missing \n is intentional.
 		 */
 		printf("Unable to use %s %d:%d... ",
-		       CONFIG_ENV_FAT_INTERFACE, dev, part);
+		       ifname, dev, part);
 		goto err_env_relocate;
 	}
 
@@ -115,7 +128,7 @@ static int env_fat_load(void)
 		 * will calling it. The missing \n is intentional.
 		 */
 		printf("Unable to read \"%s\" from %s%d:%d... ",
-			CONFIG_ENV_FAT_FILE, CONFIG_ENV_FAT_INTERFACE, dev, part);
+			CONFIG_ENV_FAT_FILE, ifname, dev, part);
 		goto err_env_relocate;
 	}
 
