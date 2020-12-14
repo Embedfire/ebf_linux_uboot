@@ -79,7 +79,7 @@
 			"echo loading vmlinuz-${uname_r} ...; "\
 			"load ramblock 0:1 0x80800000 /vmlinuz-${uname_r};"\
 			"echo loading ${dtb} ...; "\
-			"load ramblock 0:1 0x83000000 /dtbs/${uname_r}/${dtb};"\
+			"ubifsload 0x83000000 /usr/lib/linux-image-${uname_r}/${dtb};"\
 			"dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
 			"load ramblock 0:1 0x88000000 /initrd.img-${uname_r};"\
 			"echo debug: [${bootargs}] ... ;" \
@@ -167,6 +167,7 @@
 		"root=/dev/mmcblk${mmcdev}p2 rw " \
 		"rootfstype=ext4 " \
 		"rootwait ${cmdline} ${flashtype}\0" \
+	"rootfpart=0:2\0" \
 	"boot=mmc check;${devtype} dev ${mmcdev};mmc rescan; " \
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
@@ -186,7 +187,7 @@
 			"echo loading vmlinuz-${uname_r} ...; "\
 			"load ${devtype} ${bootpart} 0x80800000 /vmlinuz-${uname_r};"\
 			"echo loading ${dtb} ...; "\
-			"load ${devtype} ${bootpart} 0x83000000 /dtbs/${uname_r}/${dtb};"\
+			"load ${devtype} ${rootfpart} 0x83000000 /usr/lib/linux-image-${uname_r}/${dtb};"\
 			"dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
 			"load ${devtype} ${bootpart} 0x88000000 /initrd.img-${uname_r};"\
 			"echo debug: [${bootargs}] ... ;" \
