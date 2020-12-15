@@ -167,7 +167,6 @@
 		"root=/dev/mmcblk${mmcdev}p2 rw " \
 		"rootfstype=ext4 " \
 		"rootwait ${cmdline} ${flashtype}\0" \
-	"rootfpart=0:2\0" \
 	"boot=mmc check;${devtype} dev ${mmcdev};mmc rescan; " \
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
@@ -252,6 +251,7 @@
 	"setenv devtype mmc; " \
 	"setenv mmcdev " #instance"; "\
 	"setenv bootpart " #instance":1 ; "\
+	"setenv rootfpart " #instance":2 ; "\
 	"run boot\0"
 
 #define BOOTENV_DEV_NAME_LEGACY_MMC(devtypeu, devtypel, instance) \
