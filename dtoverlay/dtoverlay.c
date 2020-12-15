@@ -1756,7 +1756,12 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
    {
       #if defined(CONFIG_SYS_BOOT_NAND)
       
-      fs_set_blk_dev("ramblock", "0:2", FS_TYPE_ANY);
+      ubifs_load(dt_file,fdt,0);
+      bytes_read = env_get_hex("filesize", 0);
+      if (!bytes_read) 
+      {
+         dtoverlay_debug("** %s read error\n",dt_file);
+      }
 
       #else
 
@@ -1766,14 +1771,12 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
       else 
       fs_set_blk_dev("mmc", "1:2", FS_TYPE_ANY);
 
-      #endif
-
       if(fs_read(dt_file,fdt,0,0,&bytes_read)<0)
          dtoverlay_debug("** %s read error\n",dt_file);
       else
          dtoverlay_debug("** %s file length:0x%x\n",dt_file,(unsigned int)bytes_read);
 
-      
+      #endif
    }
    
    // Record the total size before any expansion
