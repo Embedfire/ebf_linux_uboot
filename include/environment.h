@@ -268,6 +268,9 @@ extern struct hsearch_data env_htab;
 /* Function that updates CRC of the enironment */
 void env_crc_update(void);
 
+
+const char *env_fat_get_intf(void);
+const char *env_fat_get_dev_part(void);
 /* allows to set ext4 interface */
 const char *env_ext4_get_intf(void);
 
