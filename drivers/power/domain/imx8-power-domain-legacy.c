@@ -62,7 +62,10 @@ static int imx8_power_domain_on(struct power_domain *power_domain)
 	if (ppriv->state_on)
 		return 0;
 
-	if (pdata->resource_id != SC_R_LAST) {
+	if (pdata->resource_id != SC_R_NONE) {
+		if (!sc_rm_is_resource_owned(-1, pdata->resource_id))
+			printf("%s [%d] not owned by curr partition\n", dev->name, pdata->resource_id);
+
 		ret = sc_pm_set_resource_power_mode(-1, pdata->resource_id,
 						    SC_PM_PW_MODE_ON);
 		if (ret) {
@@ -108,14 +111,14 @@ static int imx8_power_domain_off_node(struct power_domain *power_domain)
 		}
 	}
 
-	if (pdata->resource_id != SC_R_LAST) {
-		if (!sc_rm_is_resource_owned(-1, pdata->resource_id)) {
-			printf("%s not owned by curr partition\n", dev->name);
-			return 0;
-		}
+	if (pdata->resource_id != SC_R_NONE) {
 		ret = sc_pm_set_resource_power_mode(-1, pdata->resource_id,
 						    SC_PM_PW_MODE_OFF);
 		if (ret) {
+			if (!sc_rm_is_resource_owned(-1, pdata->resource_id)) {
+				printf("%s not owned by curr partition %d\n", dev->name, pdata->resource_id);
+				return 0;
+			}
 			printf("Error: %s Power off failed! (error = %d)\n",
 			       dev->name, ret);
 			return -EIO;
@@ -171,7 +174,7 @@ static int imx8_power_domain_off_parentnodes(struct power_domain *power_domain)
 		}
 
 		/* power off parent */
-		if (pdata->resource_id != SC_R_LAST) {
+		if (pdata->resource_id != SC_R_NONE) {
 			ret = sc_pm_set_resource_power_mode(-1,
 							    pdata->resource_id,
 							    SC_PM_PW_MODE_OFF);
@@ -313,4 +316,5 @@ U_BOOT_DRIVER(imx8_power_domain) = {
 	.platdata_auto_alloc_size = sizeof(struct imx8_power_domain_platdata),
 	.priv_auto_alloc_size = sizeof(struct imx8_power_domain_priv),
 	.ops = &imx8_power_domain_ops,
+	.flags	= DM_FLAG_DEFAULT_PD_CTRL_OFF,
 };

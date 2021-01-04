@@ -16,12 +16,49 @@
 #include <asm/mach-imx/hab.h>
 #include <asm/mach-imx/boot_mode.h>
 #include <g_dnl.h>
+#include <mmc.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
 __weak int spl_board_boot_device(enum boot_device boot_dev_spl)
 {
-	return 0;
+	switch (boot_dev_spl) {
+#if defined(CONFIG_MX7)
+	case SD1_BOOT:
+	case MMC1_BOOT:
+	case SD2_BOOT:
+	case MMC2_BOOT:
+	case SD3_BOOT:
+	case MMC3_BOOT:
+		return BOOT_DEVICE_MMC1;
+#elif defined(CONFIG_IMX8)
+	case MMC1_BOOT:
+		return BOOT_DEVICE_MMC1;
+	case SD2_BOOT:
+		return BOOT_DEVICE_MMC2_2;
+	case SD3_BOOT:
+		return BOOT_DEVICE_MMC1;
+	case FLEXSPI_BOOT:
+		return BOOT_DEVICE_SPI;
+#elif defined(CONFIG_IMX8M)
+	case SD1_BOOT:
+	case MMC1_BOOT:
+		return BOOT_DEVICE_MMC1;
+	case SD2_BOOT:
+	case MMC2_BOOT:
+		return BOOT_DEVICE_MMC2;
+#endif
+	case NAND_BOOT:
+		return BOOT_DEVICE_NAND;
+	case SPI_NOR_BOOT:
+		return BOOT_DEVICE_SPI;
+	case QSPI_BOOT:
+		return BOOT_DEVICE_NOR;
+	case USB_BOOT:
+		return BOOT_DEVICE_BOARD;
+	default:
+		return BOOT_DEVICE_NONE;
+	}
 }
 
 #if defined(CONFIG_MX6)
@@ -136,45 +173,7 @@ u32 spl_boot_device(void)
 
 	enum boot_device boot_device_spl = get_boot_device();
 
-	if (IS_ENABLED(CONFIG_IMX8MM) || IS_ENABLED(CONFIG_IMX8MN) ||
-	    IS_ENABLED(CONFIG_IMX8MP))
-		return spl_board_boot_device(boot_device_spl);
-
-	switch (boot_device_spl) {
-#if defined(CONFIG_MX7)
-	case SD1_BOOT:
-	case MMC1_BOOT:
-	case SD2_BOOT:
-	case MMC2_BOOT:
-	case SD3_BOOT:
-	case MMC3_BOOT:
-		return BOOT_DEVICE_MMC1;
-#elif defined(CONFIG_IMX8)
-	case MMC1_BOOT:
-		return BOOT_DEVICE_MMC1;
-	case SD2_BOOT:
-		return BOOT_DEVICE_MMC2_2;
-	case SD3_BOOT:
-		return BOOT_DEVICE_MMC1;
-	case FLEXSPI_BOOT:
-		return BOOT_DEVICE_SPI;
-#elif defined(CONFIG_IMX8M)
-	case SD1_BOOT:
-	case MMC1_BOOT:
-		return BOOT_DEVICE_MMC1;
-	case SD2_BOOT:
-	case MMC2_BOOT:
-		return BOOT_DEVICE_MMC2;
-#endif
-	case NAND_BOOT:
-		return BOOT_DEVICE_NAND;
-	case SPI_NOR_BOOT:
-		return BOOT_DEVICE_SPI;
-	case USB_BOOT:
-		return BOOT_DEVICE_USB;
-	default:
-		return BOOT_DEVICE_NONE;
-	}
+	return spl_board_boot_device(boot_device_spl);
 }
 #endif /* CONFIG_MX7 || CONFIG_IMX8M || CONFIG_IMX8 */
 
@@ -184,6 +183,12 @@ int g_dnl_bind_fixup(struct usb_device_descriptor *dev, const char *name)
 	put_unaligned(CONFIG_USB_GADGET_PRODUCT_NUM + 0xfff, &dev->idProduct);
 
 	return 0;
+}
+
+#define SDPV_BCD_DEVICE 0x500
+int g_dnl_get_board_bcd_device_number(int gcnum)
+{
+	return SDPV_BCD_DEVICE;
 }
 #endif
 
@@ -341,6 +346,20 @@ void board_spl_fit_post_load(ulong load_addr, size_t length)
 }
 #endif
 
+void* board_spl_fit_buffer_addr(ulong fit_size, int bl_len)
+{
+	int align_len = ARCH_DMA_MINALIGN - 1;
+
+	/* Some devices like SDP, NOR, NAND, SPI are using bl_len =1, so their fit address
+	 * is different with SD/MMC, this cause mismatch with signed address. Thus, adjust
+	 * the bl_len to align with SD/MMC.
+	 */
+	if (bl_len < 512)
+		bl_len = 512;
+
+	return  (void *)((CONFIG_SYS_TEXT_BASE - fit_size - bl_len -
+			align_len) & ~align_len);
+}
 #endif
 
 #if defined(CONFIG_MX6) && defined(CONFIG_SPL_OS_BOOT)
@@ -350,5 +369,29 @@ int dram_init_banksize(void)
 	gd->bd->bi_dram[0].size = imx_ddr_size();
 
 	return 0;
+}
+#endif
+
+#if defined(CONFIG_IMX_TRUSTY_OS) || defined(CONFIG_IMX8_TRUSTY_XEN)
+int check_rpmb_blob(struct mmc *mmc);
+
+int mmc_image_load_late(struct mmc *mmc)
+{
+	struct mmc *rpmb_mmc;
+
+#ifdef CONFIG_IMX8_TRUSTY_XEN
+	/* keyblob is stored at eMMC */
+	if (mmc_init_device(0))
+		printf("mmc init device fail %s\n", __func__);
+	rpmb_mmc = find_mmc_device(0);
+	if (mmc_init(rpmb_mmc)) {
+		printf("mmc init failed %s\n", __func__);
+		return -1;
+       }
+#else
+	rpmb_mmc = mmc;
+#endif
+	/* Check the rpmb key blob for trusty enabled platfrom. */
+	return check_rpmb_blob(rpmb_mmc);
 }
 #endif

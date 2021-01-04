@@ -16,8 +16,10 @@ struct pass_over_info_t {
 	u32 g_ap_mu;
 };
 
-extern unsigned long boot_pointer[];
+extern unsigned long rom_pointer[];
 void build_info(void);
 enum boot_device get_boot_device(void);
 int print_bootinfo(void);
 int sc_pm_setup_uart(sc_rsrc_t uart_rsrc, sc_pm_clock_rate_t clk_rate);
+void power_off_pd_devices(const char* permanent_on_devices[], int size);
+bool check_m4_parts_boot(void);

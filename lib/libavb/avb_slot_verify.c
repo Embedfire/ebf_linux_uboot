@@ -15,6 +15,10 @@
 #include "avb_vbmeta_image.h"
 #include "avb_version.h"
 #include <malloc.h>
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_AVB_ATX) && !defined(CONFIG_XEN)
+#include "trusty/hwcrypto.h"
+#include <memalign.h>
+#endif
 
 /* Maximum number of partitions that can be loaded with avb_slot_verify(). */
 #define MAX_NUMBER_OF_LOADED_PARTITIONS 32
@@ -24,6 +28,21 @@
 
 /* Maximum size of a vbmeta image - 64 KiB. */
 #define VBMETA_MAX_SIZE (64 * 1024)
+/* Set the image load addr start from 96MB offset of CONFIG_FASTBOOT_BUF_ADDR */
+#define PARTITION_LOAD_ADDR_START (CONFIG_FASTBOOT_BUF_ADDR + (96 * 1024 * 1024))
+
+/* Load dtbo/boot partition to fixed address instead of heap memory. */
+static void *image_addr_top = (void *)PARTITION_LOAD_ADDR_START;
+static void *alloc_partition_addr(int size)
+{
+  void *ptr = image_addr_top;
+  image_addr_top = image_addr_top + ROUND(size, ARCH_DMA_MINALIGN);
+  return ptr;
+}
+static void free_partition_addr(int size)
+{
+  image_addr_top = (void *)(image_addr_top - ROUND(size, ARCH_DMA_MINALIGN));
+}
 
 static AvbSlotVerifyResult initialize_persistent_digest(
     AvbOps* ops,
@@ -97,7 +116,7 @@ static AvbSlotVerifyResult load_full_partition(AvbOps* ops,
 
   /* Allocate and copy the partition. */
   if (!*out_image_preloaded) {
-    *out_image_buf = avb_malloc(image_size);
+    *out_image_buf = (void *)alloc_partition_addr(image_size);
     if (*out_image_buf == NULL) {
       return AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
     }
@@ -275,11 +294,16 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
   bool image_preloaded = false;
   uint8_t* digest;
   size_t digest_len;
-  const char* found;
+  const char* found = NULL;
   uint64_t image_size;
   size_t expected_digest_len = 0;
   uint8_t expected_digest_buf[AVB_SHA512_DIGEST_SIZE];
   const uint8_t* expected_digest = NULL;
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_AVB_ATX) && !defined(CONFIG_XEN)
+  uint8_t* hash_out = NULL;
+  uint8_t* hash_buf = NULL;
+#endif
+
 
   if (!avb_hash_descriptor_validate_and_byteswap(
           (const AvbHashDescriptor*)descriptor, &hash_desc)) {
@@ -370,7 +394,9 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
   // Although only one of the type might be used, we have to defined the
   // structure here so that they would live outside the 'if/else' scope to be
   // used later.
+#if !defined(CONFIG_IMX_TRUSTY_OS) || defined(CONFIG_AVB_ATX) ||  defined(CONFIG_XEN)
   AvbSHA256Ctx sha256_ctx;
+#endif
   AvbSHA512Ctx sha512_ctx;
   size_t image_size_to_hash = hash_desc.image_size;
   // If we allow verification error and the whole partition is smaller than
@@ -379,10 +405,37 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
     image_size_to_hash = image_size;
   }
   if (avb_strcmp((const char*)hash_desc.hash_algorithm, "sha256") == 0) {
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_AVB_ATX) && !defined(CONFIG_XEN)
+    /* DMA requires cache aligned input/output buffer */
+    hash_out = memalign(ARCH_DMA_MINALIGN, AVB_SHA256_DIGEST_SIZE);
+    if (hash_out == NULL) {
+        avb_error("failed to alloc memory!\n");
+        ret = AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
+        goto out;
+    }
+    hash_buf = (void *)CONFIG_FASTBOOT_BUF_ADDR;
+
+    avb_memcpy(hash_buf, desc_salt, hash_desc.salt_len);
+    avb_memcpy(hash_buf + hash_desc.salt_len,
+               image_buf, image_size_to_hash);
+    /* calculate sha256 hash by caam */
+    if (hwcrypto_hash((uint32_t)(ulong)hash_buf,
+                  (hash_desc.salt_len + image_size_to_hash),
+                  (uint32_t)(ulong)hash_out,
+                  AVB_SHA256_DIGEST_SIZE,
+                  SHA256) != 0) {
+        avb_error("Failed to calculate sha256 hash with caam.\n");
+	ret = AVB_SLOT_VERIFY_RESULT_ERROR_VERIFICATION;
+	goto out;
+    }
+
+    digest = hash_out;
+#else
     avb_sha256_init(&sha256_ctx);
     avb_sha256_update(&sha256_ctx, desc_salt, hash_desc.salt_len);
     avb_sha256_update(&sha256_ctx, image_buf, image_size_to_hash);
     digest = avb_sha256_final(&sha256_ctx);
+#endif
     digest_len = AVB_SHA256_DIGEST_SIZE;
   } else if (avb_strcmp((const char*)hash_desc.hash_algorithm, "sha512") == 0) {
     avb_sha512_init(&sha512_ctx);
@@ -435,6 +488,12 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
 
 out:
 
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_AVB_ATX) && !defined(CONFIG_XEN)
+  if (hash_out != NULL) {
+    free(hash_out);
+    hash_out = NULL;
+  }
+#endif
   /* If it worked and something was loaded, copy to slot_data. */
   if ((ret == AVB_SLOT_VERIFY_RESULT_OK || result_should_continue(ret)) &&
       image_buf != NULL) {
@@ -454,8 +513,10 @@ out:
   }
 
 fail:
+  /* Now the image_buf is not allocated by malloc(), we should not free.
+   * Instead, we should reset the image_addr_top.*/
   if (image_buf != NULL && !image_preloaded) {
-    avb_free(image_buf);
+    free_partition_addr(image_size);
   }
   return ret;
 }
@@ -467,13 +528,13 @@ static AvbSlotVerifyResult load_requested_partitions(
     AvbSlotVerifyData* slot_data) {
   AvbSlotVerifyResult ret;
   uint8_t* image_buf = NULL;
+    uint64_t image_size;
   bool image_preloaded = false;
   size_t n;
 
   for (n = 0; requested_partitions[n] != NULL; n++) {
     char part_name[AVB_PART_NAME_MAX_SIZE];
     AvbIOResult io_ret;
-    uint64_t image_size;
     AvbPartitionData* loaded_partition;
 
     if (!avb_str_concat(part_name,
@@ -527,9 +588,10 @@ static AvbSlotVerifyResult load_requested_partitions(
   ret = AVB_SLOT_VERIFY_RESULT_OK;
 
 out:
-  /* Free the current buffer if any. */
+  /* Now the image_buf is not allocated by malloc(), we should not free.
+   * Instead, we should reset the image_addr_top.*/
   if (image_buf != NULL && !image_preloaded) {
-    avb_free(image_buf);
+    free_partition_addr(image_size);
   }
   /* Buffers that are already saved in slot_data will be handled by the caller
    * even on failure. */
@@ -1634,10 +1696,10 @@ void avb_slot_verify_data_free(AvbSlotVerifyData* data) {
       if (loaded_partition->partition_name != NULL) {
         avb_free(loaded_partition->partition_name);
       }
-      if (loaded_partition->data != NULL && !loaded_partition->preloaded) {
-        avb_free(loaded_partition->data);
-      }
     }
+    /* partition data is not loaded to heap memory, so we just reset the
+     * image_addr_top here. */
+    image_addr_top = (void *)PARTITION_LOAD_ADDR_START;
     avb_free(data->loaded_partitions);
   }
   avb_free(data);

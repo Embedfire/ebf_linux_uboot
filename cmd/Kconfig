@@ -480,6 +480,12 @@ config CMD_FITUPD
 	  Implements the 'fitupd' command, which allows to automatically
 	  store software updates present on a TFTP server in NOR Flash
 
+config CMD_FSL_CAAM_KB
+    bool "Freescale i.MX CAAM command"
+    help
+      Implement the "caam" command to generate DEK blob for one block of data
+      or decap the DEK blob to its original data.
+
 config CMD_THOR_DOWNLOAD
 	bool "thor - TIZEN 'thor' download"
 	select DFU
@@ -1818,6 +1824,8 @@ config CMD_AES
 
 config CMD_BLOB
 	bool "Enable the 'blob' command"
+	depends on !MX6ULL && !MX6SLL && !MX6SL
+	select IMX_HAB if ARCH_MX6 || ARCH_MX7 || ARCH_MX7ULP || ARCH_IMX8M
 	help
 	  This is used with the Freescale secure boot mechanism.
 
@@ -2054,6 +2062,12 @@ config MTDPARTS_DEFAULT
 	help
 	  Defines a default MTD partitioning scheme in the Linux MTD command
 	  line partitions format
+
+config MTDPARTS_SKIP_INVALID
+	bool "Skip invalid devices and keep checking the next one"
+	depends on CMD_MTDPARTS
+	help
+	  Enable this feature will look for next device rather than quit.
 
 config CMD_REISER
 	bool "reiser - Access to reiserfs filesystems"

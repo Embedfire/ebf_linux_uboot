@@ -29,6 +29,7 @@
 #include <linux/compiler.h>
 #include <bootm.h>
 #include <vxworks.h>
+#include <video_link.h>
 
 #ifdef CONFIG_ARMV7_NONSEC
 #include <asm/armv7.h>
@@ -103,6 +104,10 @@ static void announce_and_cleanup(int fake)
 	udc_disconnect();
 #endif
 
+#if defined(CONFIG_VIDEO_LINK)
+	video_link_shut_down();
+#endif
+
 	board_quiesce_devices();
 
 	printf("\nStarting kernel ...%s\n\n", fake ?
@@ -112,7 +117,9 @@ static void announce_and_cleanup(int fake)
 	 * This may be useful for last-stage operations, like cancelling
 	 * of DMA operation or releasing device internal buffers.
 	 */
+#ifndef CONFIG_POWER_DOMAIN
 	dm_remove_devices_flags(DM_REMOVE_ACTIVE_ALL);
+#endif
 
 	cleanup_before_linux();
 }

@@ -2,19 +2,23 @@ if ARCH_IMX8M
 
 config IMX8M
 	bool
+	select HAS_CAAM
 	select ROM_UNIFIED_SECTIONS
 
 config IMX8MQ
 	bool
 	select IMX8M
+	select ARMV8_SPL_EXCEPTION_VECTORS
 
 config IMX8MM
 	bool
 	select IMX8M
+	select ARMV8_SPL_EXCEPTION_VECTORS
 
 config IMX8MN
 	bool
 	select IMX8M
+	select ARMV8_SPL_EXCEPTION_VECTORS
 
 config IMX8MP
 	bool
@@ -22,6 +26,25 @@ config IMX8MP
 
 config SYS_SOC
 	default "imx8m"
+
+config SECONDARY_BOOT_SECTOR_OFFSET
+	hex "SD/MMC sector offset used for ROM secondary boot"
+	default 0x0
+	depends on IMX8MQ || IMX8MM
+	help
+	  Set the sector offset to non-zero value in SPL used for
+	  secondary boot image. This value should be same as the
+	  firstSectorNumber in secondary image table.
+
+config SECURE_STICKY_BITS_LOCKUP
+	bool "Enable workaround to fix sticky bits lock up issue"
+	depends on IMX8MQ && IMX_HAB
+	default y
+
+config IMX_UNIQUE_ID
+	hex "Enable workaround to fix sticky bits lock up issue"
+	depends on IMX8MQ && IMX_HAB && !SECURE_STICKY_BITS_LOCKUP
+	default 0x0
 
 choice
 	prompt  "NXP i.MX8M board select"
@@ -32,13 +55,46 @@ config TARGET_IMX8MQ_EVK
 	select IMX8MQ
 	select IMX8M_LPDDR4
 
+config TARGET_IMX8MQ_DDR3L_VAL
+	bool "imx8mq_ddr3l_val"
+	select IMX8MQ
+
+config TARGET_IMX8MQ_DDR4_VAL
+	bool "imx8mq_ddr4_val"
+	select IMX8MQ
+	select IMX8M_DDR4
+
+config TARGET_IMX8MM_DDR4_VAL
+	bool "imx8mm DDR4 validation board"
+	select IMX8MM
+	select SUPPORT_SPL
+	select IMX8M_DDR4
+
+config TARGET_IMX8MM_DDR3L_VAL
+	bool "imx8mm DDR3L validation board"
+	select IMX8MM
+	select SUPPORT_SPL
+	select IMX8M_DDR3L
+
 config TARGET_IMX8MM_EVK
 	bool "imx8mm LPDDR4 EVK board"
 	select IMX8MM
 	select SUPPORT_SPL
 	select IMX8M_LPDDR4
 
+config TARGET_IMX8MM_DDR4_EVK
+	bool "imx8mm DDR4 EVK board"
+	select IMX8MM
+	select SUPPORT_SPL
+	select IMX8M_DDR4
+
 config TARGET_IMX8MN_EVK
+	bool "imx8mn LPDDR4 EVK board"
+	select IMX8MN
+	select SUPPORT_SPL
+	select IMX8M_LPDDR4
+
+config TARGET_IMX8MN_DDR4_EVK
 	bool "imx8mn DDR4 EVK board"
 	select IMX8MN
 	select SUPPORT_SPL
@@ -50,6 +106,30 @@ config TARGET_IMX8MP_EVK
 	select SUPPORT_SPL
 	select IMX8M_LPDDR4
 
+config TARGET_IMX8MM_AB2
+	bool "imx8mm LPDDR4 Audio board 2.0"
+	select IMX8MM
+	select SUPPORT_SPL
+	select IMX8M_LPDDR4
+
+config TARGET_IMX8MM_DDR4_AB2
+	bool "imx8mm DDR4 Audio board 2.0"
+	select IMX8MM
+	select SUPPORT_SPL
+	select IMX8M_DDR4
+
+config TARGET_IMX8MN_AB2
+	bool "imx8mn LPDDR4 Audio board 2.0"
+	select IMX8MN
+	select SUPPORT_SPL
+	select IMX8M_LPDDR4
+
+config TARGET_IMX8MN_DDR4_AB2
+	bool "imx8mn DDR4 Audio board 2.0"
+	select IMX8MN
+	select SUPPORT_SPL
+	select IMX8M_DDR4
+
 config TARGET_VERDIN_IMX8MM
        bool "Support Toradex Verdin iMX8M Mini module"
        select IMX8MM
@@ -59,7 +139,10 @@ config TARGET_VERDIN_IMX8MM
 endchoice
 
 source "board/freescale/imx8mq_evk/Kconfig"
+source "board/freescale/imx8mq_val/Kconfig"
+source "board/freescale/imx8mm_ab2/Kconfig"
 source "board/freescale/imx8mm_evk/Kconfig"
+source "board/freescale/imx8mm_val/Kconfig"
 source "board/freescale/imx8mn_evk/Kconfig"
 source "board/freescale/imx8mp_evk/Kconfig"
 source "board/toradex/verdin-imx8mm/Kconfig"

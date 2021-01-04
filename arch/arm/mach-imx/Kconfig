@@ -4,6 +4,11 @@ config HAS_CAAM
 config IMX_CONFIG
 	string
 
+config IMX_OPTEE
+	bool "Support OP-TEE"
+	help
+	 Enable support for OP-TEE
+
 config ROM_UNIFIED_SECTIONS
 	bool
 
@@ -12,6 +17,17 @@ config SYSCOUNTER_TIMER
 
 config GPT_TIMER
 	bool
+
+config FSL_CAAM_KB
+	bool
+
+config IMX_SEC_INIT
+	bool
+	help
+		In most of i.MX board with CAAM this option is used
+		to init RNG from U-Boot
+	select FSL_CAAM_KB
+	select SPL_CRYPTO_SUPPORT if SPL
 
 config IMX_RDC
 	bool "i.MX Resource domain controller driver"
@@ -23,9 +39,29 @@ config IMX_RDC
 
 config IMX_BOOTAUX
 	bool "Support boot auxiliary core"
-	depends on ARCH_MX7 || ARCH_MX6 || ARCH_VF610
+	depends on ARCH_MX7 || ARCH_MX6 || ARCH_VF610 || ARCH_IMX8 || ARCH_IMX8M
 	help
 	  bootaux [addr] to boot auxiliary core.
+
+config IMX_VSERVICE_SHARED_BUFFER
+	hex "Define the buffer address used for virtual service"
+	depends on IMX_VSERVICE
+	help
+	  IMX virtual service will use this buffer for exchanging data with remote core.
+
+config IMX_VSERVICE_SHARED_BUFFER_SIZE
+	hex "Define the size of buffer address used for virtual service"
+	default 0x400000
+	depends on IMX_VSERVICE
+	help
+	  The buffer size for IMX virtual service needs enough large to fit all possible message.
+
+config IMX_VSERVICE
+	bool
+    select MISC
+    select IMX_M4_MU
+	help
+	  This enables imx virtual service provides framework for imx virtual driver working.
 
 config USE_IMXIMG_PLUGIN
 	bool "Use imximage plugin code"
@@ -36,9 +72,9 @@ config USE_IMXIMG_PLUGIN
 
 config IMX_HAB
 	bool "Support i.MX HAB features"
-	depends on ARCH_MX7 || ARCH_MX6 || ARCH_MX5
+	depends on ARCH_MX7 || ARCH_MX6 || ARCH_MX5 || ARCH_MX7ULP || ARCH_IMX8M
 	select FSL_CAAM if HAS_CAAM
-	imply CMD_DEKBLOB
+	imply CMD_DEKBLOB if HAS_CAAM
 	help
 	  This option enables the support for secure boot (HAB).
 	  See doc/README.mxc_hab for more details.
@@ -66,11 +102,42 @@ config CMD_BMODE
 
 config CMD_DEKBLOB
 	bool "Support the 'dek_blob' command"
+	select IMX_CAAM_DEK_ENCAP if ARCH_MX6 || ARCH_MX7 || ARCH_MX7ULP
+	select IMX_OPTEE_DEK_ENCAP if ARCH_IMX8M
+	select IMX_SECO_DEK_ENCAP if ARCH_IMX8
 	help
 	  This enables the 'dek_blob' command which is used with the
 	  Freescale secure boot mechanism. This command encapsulates and
 	  creates a blob of data. See also CMD_BLOB and doc/README.mxc_hab for
 	  more information.
+
+config IMX_CAAM_DEK_ENCAP
+	bool "Support the DEK blob encapsulation with CAAM U-Boot driver"
+	help
+	  This enables the DEK blob encapsulation with the U-Boot CAAM driver.
+	  This option is only available on imx6, imx7 and imx7ulp.
+
+config IMX_OPTEE_DEK_ENCAP
+	select TEE
+	select OPTEE
+	bool "Support the DEK blob encapsulation with OP-TEE"
+	help
+	  This enabled the DEK blob encapsulation with OP-TEE. The communication
+	  with OP-TEE is done through a SMC call and OP-TEE shared memory. This
+	  option is available on imx8mm.
+
+config IMX_SECO_DEK_ENCAP
+	bool "Support the DEK blob encapsulation with SECO"
+	help
+	  This enabled the DEK blob encapsulation with the SECO API. This option
+	  is only available on imx8.
+
+config CMD_PRIBLOB
+	bool "Support the set_priblob_bitfield command"
+	depends on HAS_CAAM && IMX_HAB
+	help
+	  This option enables the priblob command which can be used
+		to set the priblob setting to 0x3.
 
 config CMD_HDMIDETECT
 	bool "Support the 'hdmidet' command"
@@ -82,13 +149,44 @@ config CMD_NANDBCB
 	bool "i.MX6 NAND Boot Control Block(BCB) command"
 	depends on MTD_RAW_NAND && CMD_MTDPARTS
 	select BCH if MX6UL || MX6ULL
-	default y if (ARCH_MX6 && NAND_MXS) || (ARCH_MX7 && NAND_MXS)
+	default y if ((ARCH_MX6 || ARCH_MX7 || ARCH_IMX8M || ARCH_IMX8) && NAND_MXS)
 	help
 	  Unlike normal 'nand write/erase' commands, this command update
 	  Boot Control Block(BCB) for i.MX6 platform NAND IP's.
 
 	  This is similar to kobs-ng, which is used in Linux as separate
 	  rootfs package.
+
+config FSL_MFGPROT
+	bool "Support the 'mfgprot' command"
+	depends on IMX_HAB || AHAB_BOOT
+	select IMX_CAAM_MFG_PROT if ARCH_MX7
+	select IMX_SECO_MFG_PROT if ARCH_IMX8
+	help
+	  This option enables the manufacturing protection command
+	  which can be used has a protection feature for Manufacturing
+	  process. With this tool is possible to authenticate the
+	  chip to the OEM's server.
+
+config IMX_CAAM_MFG_PROT
+	bool "Support the manufacturing protection with CAAM U-Boot driver"
+	help
+	  This enables the manufacturing protection feature with the U-Boot
+	  CAAM driver. This option is only available on iMX7D/S.
+
+config IMX_SECO_MFG_PROT
+	bool "Support the manufacturing protection with SECO API"
+	help
+	  This enables the manufacturing protection feature with the SECO API.
+	  This option is only available on iMX8/8x series.
+
+config DBG_MONITOR
+	bool "Enable the AXI debug monitor"
+	depends on ARCH_MX6 || ARCH_MX7
+	help
+	  This option enables the debug monitor which prints out last
+	  failed AXI access info when system reboot is caused by AXI
+	  access failure.
 
 config NXP_BOARD_REVISION
 	bool "Read NXP board revision from fuses"
@@ -97,6 +195,12 @@ config NXP_BOARD_REVISION
 	  NXP boards based on i.MX6/7 contain the board revision information
 	  stored in the fuses. Select this option if you want to be able to
 	  retrieve the board revision information.
+
+config FLASH_MCUFIRMWARE_SUPPORT
+	bool "Enable mcu firmware flash support"
+	depends on ARCH_MX7ULP || ARCH_IMX8M
+	help
+	  This enables the mcu firmware flash support for some SOCs.
 
 config DDRMC_VF610_CALIBRATION
 	bool "Enable DDRMC (DDR3) on-chip calibration"
@@ -123,3 +227,11 @@ config IMX_DCD_ADDR
 	  the ROM code to configure the device at early boot stage, is located.
 	  This information is shared with the user via mkimage -l just so the
 	  image can be signed.
+
+config IMX_TRUSTY_OS
+	bool "Support Trusty OS related feature"
+	depends on ARCH_MX6 || ARCH_MX7 || ARCH_IMX8 || ARCH_IMX8M
+	select SYS_ARM_CACHE_WRITEALLOC
+
+config SYS_ARM_CACHE_WRITEALLOC
+	bool "support cache write alloc"

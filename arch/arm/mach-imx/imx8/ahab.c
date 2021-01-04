@@ -12,6 +12,7 @@
 #include <asm/arch/sys_proto.h>
 #include <asm/arch/image.h>
 #include <console.h>
+#include <cpu_func.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -75,7 +76,7 @@ int authenticate_os_container(ulong addr)
 	memcpy((void *)SEC_SECURE_RAM_BASE, (const void *)addr,
 	       ALIGN(length, CONFIG_SYS_CACHELINE_SIZE));
 
-	err = sc_seco_authenticate(-1, SC_MISC_AUTH_CONTAINER,
+	err = sc_seco_authenticate(-1, SC_SECO_AUTH_CONTAINER,
 				   SECO_LOCAL_SEC_SEC_SECURE_RAM_BASE);
 	if (err) {
 		printf("Authenticate container hdr failed, return %d\n",
@@ -102,7 +103,7 @@ int authenticate_os_container(ulong addr)
 		flush_dcache_range(s, e);
 
 		/* Find the memreg and set permission for seco pt */
-		err = sc_rm_find_memreg(-1, &mr, s, e);
+		err = sc_rm_find_memreg(-1, &mr, s, e - 1);
 		if (err) {
 			printf("Not found memreg for image: %d, error %d\n",
 			       i, err);
@@ -123,7 +124,7 @@ int authenticate_os_container(ulong addr)
 			goto exit;
 		}
 
-		err = sc_seco_authenticate(-1, SC_MISC_VERIFY_IMAGE,
+		err = sc_seco_authenticate(-1, SC_SECO_VERIFY_IMAGE,
 					   (1 << i));
 		if (err) {
 			printf("Authenticate img %d failed, return %d\n",
@@ -144,7 +145,7 @@ int authenticate_os_container(ulong addr)
 	}
 
 exit:
-	if (sc_seco_authenticate(-1, SC_MISC_REL_CONTAINER, 0) != SC_ERR_NONE)
+	if (sc_seco_authenticate(-1, SC_SECO_REL_CONTAINER, 0) != SC_ERR_NONE)
 		printf("Error: release container failed!\n");
 
 	return ret;

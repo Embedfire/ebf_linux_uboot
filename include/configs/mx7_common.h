@@ -33,13 +33,15 @@
 #define CONFIG_ENV_OVERWRITE
 
 /* Miscellaneous configurable options */
-#define CONFIG_SYS_CBSIZE		512
+#define CONFIG_SYS_CBSIZE		2048
 #define CONFIG_SYS_MAXARGS		32
+#define CONFIG_SYS_BARGSIZE		CONFIG_SYS_CBSIZE
 
 /* UART */
 #define CONFIG_MXC_UART
 
-/* MMC */
+/* NET PHY */
+#define PHY_ANEG_TIMEOUT 20000
 
 #define CONFIG_ARMV7_SECURE_BASE	0x00900000
 
@@ -58,6 +60,12 @@
 #ifndef CONFIG_OPTEE
 #define CONFIG_SKIP_LOWLEVEL_INIT
 #endif
+#endif
+
+#ifdef CONFIG_IMX_OPTEE
+#define TEE_ENV "tee=yes\0"
+#else
+#define TEE_ENV "tee=no\0"
 #endif
 
 #endif

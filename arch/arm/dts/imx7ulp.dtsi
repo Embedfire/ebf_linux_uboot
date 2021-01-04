@@ -30,6 +30,7 @@
 		serial3 = &lpuart7;
 		usbphy0 = &usbphy1;
 		usb0 = &usbotg1;
+		usbgadget0 = &usbg1;
 		i2c4 = &lpi2c4;
 		i2c5 = &lpi2c5;
 		i2c6 = &lpi2c6;
@@ -290,6 +291,13 @@
 			status = "disabled";
 		};
 
+		usbg1: usbg1 {
+			compatible = "fsl,imx27-usb-gadget";
+			dr_mode = "peripheral";
+			chipidea,usb = <&usbotg1>;
+			status = "okay";
+		};
+
 		usbotg1: usb@40330000 {
 			compatible = "fsl,imx7ulp-usb", "fsl,imx6ul-usb",
 				"fsl,imx27-usb";
@@ -480,6 +488,9 @@
 			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clks IMX7ULP_CLK_DSI>;
 			clock-names = "mipi_dsi_clk";
+			data-lanes-num = <2>;
+			phy-ref-clkfreq = <24000000>;
+			max-data-rate  = <800000000>;
 			sim = <&sim>;
 			status = "disabled";
 		};

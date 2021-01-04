@@ -65,8 +65,7 @@ endif
 checkgcc6:
 	@if test "$(call cc-name)" = "gcc" -a \
 			"$(call cc-version)" -lt "0600"; then \
-		echo '*** Your GCC is older than 6.0 and is not supported'; \
-		false; \
+		echo '*** Your GCC is older than 6.0 and will not be supported'; \
 	fi
 
 
@@ -149,6 +148,10 @@ OBJCOPYFLAGS += -j .dtb.init.rodata
 
 ifdef CONFIG_EFI_LOADER
 OBJCOPYFLAGS += -j .efi_runtime -j .efi_runtime_rel
+endif
+
+ifdef CONFIG_IMX_M4_BIND
+OBJCOPYFLAGS += -j .firmware_image
 endif
 
 ifneq ($(CONFIG_IMX_CONFIG),)

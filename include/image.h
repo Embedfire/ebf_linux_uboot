@@ -1440,9 +1440,13 @@ struct cipher_algo *image_get_cipher_algo(const char *full_name);
 
 #if defined(CONFIG_ANDROID_BOOT_IMAGE)
 struct andr_img_hdr;
+struct boot_img_hdr_v3;
+struct vendor_boot_img_hdr_v3;
 int android_image_check_header(const struct andr_img_hdr *hdr);
+int android_image_check_header_v3(const struct boot_img_hdr_v3 *hdr, const struct vendor_boot_img_hdr_v3 *vendor_hdr);
 int android_image_get_kernel(const struct andr_img_hdr *hdr, int verify,
 			     ulong *os_data, ulong *os_len);
+int android_image_get_kernel_v3(const struct boot_img_hdr_v3 *hdr, const struct vendor_boot_img_hdr_v3 *vendor_hdr);
 int android_image_get_ramdisk(const struct andr_img_hdr *hdr,
 			      ulong *rd_data, ulong *rd_len);
 int android_image_get_second(const struct andr_img_hdr *hdr,
@@ -1457,6 +1461,7 @@ void android_print_contents(const struct andr_img_hdr *hdr);
 #if !defined(CONFIG_SPL_BUILD)
 bool android_image_print_dtb_contents(ulong hdr_addr);
 #endif
+bool image_arm64(void *images);
 
 #endif /* CONFIG_ANDROID_BOOT_IMAGE */
 

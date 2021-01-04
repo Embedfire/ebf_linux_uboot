@@ -1,9 +1,39 @@
 if ARCH_IMX8
 
+config RECOVER_SPL_DATA_SECTION
+	bool
+	help
+	  Save SPL DATA section for cold boot, restore at warm boot
+
 config AHAB_BOOT
 	bool "Support i.MX8 AHAB features"
+	imply CMD_DEKBLOB
 	help
 	  This option enables the support for AHAB secure boot.
+
+config BOOTAUX_RESERVED_MEM_BASE
+	hex "Define the reserved memory base address"
+	default 0x0
+	help
+	  reserve DDR memory for bootaux
+
+config BOOTAUX_RESERVED_MEM_SIZE
+	hex "Define the reserved memory size"
+	default 0x0
+	help
+	  This memory will be reserved by system and linux cannot access.
+
+config IMX_LOAD_HDMI_FIMRWARE_RX
+	bool "Enable HDMI rx firmware loading"
+	depends on ARCH_IMX8 || VIDEO_IMX_HDP_LOAD
+	help
+	  This enable the hdmi rx firmware loading. It depends on the "hdprx" command.
+
+config IMX_LOAD_HDMI_FIMRWARE_TX
+	bool "Enable HDMI tx firmware loading"
+	depends on ARCH_IMX8 || VIDEO_IMX_HDP_LOAD
+	help
+	  This enable the hdmi tx firmware loading. It depends on the "hdp" command.
 
 config IMX8
 	bool
@@ -18,11 +48,19 @@ config MU_BASE_SPL
 config IMX8QM
 	select IMX8
 	select SUPPORT_SPL
+	select RECOVER_SPL_DATA_SECTION
 	bool
 
 config IMX8QXP
 	select IMX8
 	select SUPPORT_SPL
+	select RECOVER_SPL_DATA_SECTION
+	bool
+
+config IMX8DXL
+	select IMX8
+	select SUPPORT_SPL
+	select RECOVER_SPL_DATA_SECTION
 	bool
 
 config SYS_SOC
@@ -40,6 +78,15 @@ config IMX_CONTAINER_CFG
 	help
 	  This is to specific the cfg file for generating container
 	  image which will be loaded by SPL.
+
+config PSCI_BOARD_REBOOT
+	bool "Enable psci board reboot command"
+	depends on ARM_PSCI_FW
+	help
+	  This is a optional command used to trigger system board reboot on imx8.
+
+config IMX8_TRUSTY_XEN
+	bool "Support Trusty Xen feature"
 
 choice
 	prompt "i.MX8 board select"
@@ -70,6 +117,16 @@ config TARGET_IMX8QM_MEK
 	select BOARD_LATE_INIT
 	select IMX8QM
 
+config TARGET_IMX8QM_LPDDR4_VAL
+	bool "Support i.MX8QM lpddr4 validation board"
+	select BOARD_LATE_INIT
+	select IMX8QM
+
+config TARGET_IMX8QM_DDR4_VAL
+	bool "Support i.MX8QM ddr4 validation board"
+	select BOARD_LATE_INIT
+	select IMX8QM
+
 config TARGET_IMX8QM_ROM7720_A1
 	bool "Support i.MX8QM ROM-7720-A1"
 	select BOARD_LATE_INIT
@@ -81,13 +138,66 @@ config TARGET_IMX8QXP_MEK
 	select BOARD_LATE_INIT
 	select IMX8QXP
 
+config TARGET_IMX8QXP_LPDDR4_VAL
+	bool "Support i.MX8QXP lpddr4 validation board"
+	select BOARD_LATE_INIT
+	select IMX8QXP
+
+config TARGET_IMX8QXP_DDR3_VAL
+	bool "Support i.MX8QXP ddr3 validation board"
+	select BOARD_LATE_INIT
+	select IMX8QXP
+
+config TARGET_IMX8X_17X17_VAL
+	bool "Support i.MX8QXP/DX 17x17 validation board"
+	select BOARD_LATE_INIT
+	select IMX8QXP
+
+config TARGET_IMX8DXL_PHANTOM_MEK
+	bool "Support i.MX8DXL PHANTOM MEK board"
+	select BOARD_LATE_INIT
+	select IMX8QXP
+
+config TARGET_IMX8DX_MEK
+	bool "Support i.MX8DX MEK board"
+	select BOARD_LATE_INIT
+	select SUPPORT_SPL
+	select IMX8QXP
+
+config TARGET_IMX8DXL_EVK
+	bool "Support i.MX8DXL EVK board"
+	select BOARD_LATE_INIT
+	select IMX8DXL
+
+config TARGET_IMX8DXL_DDR3_VAL
+	bool "Support i.MX8DXL VAL board"
+	select BOARD_LATE_INIT
+	select IMX8DXL
+
 endchoice
 
 source "board/freescale/imx8qm_mek/Kconfig"
 source "board/freescale/imx8qxp_mek/Kconfig"
+source "board/freescale/imx8qm_val/Kconfig"
+source "board/freescale/imx8qxp_val/Kconfig"
+source "board/freescale/imx8dxl_phantom_mek/Kconfig"
+source "board/freescale/imx8dxl_evk/Kconfig"
 source "board/advantech/imx8qm_rom7720_a1/Kconfig"
 source "board/toradex/apalis-imx8/Kconfig"
 source "board/toradex/colibri-imx8x/Kconfig"
 source "board/siemens/capricorn/Kconfig"
+
+config SNVS_SEC_SC
+	bool "Support SNVS configuration"
+	help
+	  Allow to configure the SNVS via SCU API to configure tampers and secure
+	  violation.
+
+config SNVS_SEC_SC_AUTO
+	bool "Support SNVS configuration command"
+	depends on SNVS_SEC_SC
+	help
+	  This configuration will apply the selected configurations automatically
+	  at boot.
 
 endif

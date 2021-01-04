@@ -12,6 +12,7 @@
 #include <dm/uclass-internal.h>
 #include <dm/device-internal.h>
 #include <dm/lists.h>
+#include <bootm.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -26,8 +27,6 @@ void spl_board_init(void)
 			continue;
 	}
 
-	arch_cpu_init();
-
 	board_early_init_f();
 
 	timer_init();
@@ -35,6 +34,11 @@ void spl_board_init(void)
 	preloader_console_init();
 
 	puts("Normal Boot\n");
+}
+
+void spl_board_prepare_for_boot(void)
+{
+	board_quiesce_devices();
 }
 
 #ifdef CONFIG_SPL_LOAD_FIT
@@ -49,11 +53,10 @@ int board_fit_config_name_match(const char *name)
 
 void board_init_f(ulong dummy)
 {
-	/* Clear global data */
-	memset((void *)gd, 0, sizeof(gd_t));
-
 	/* Clear the BSS. */
 	memset(__bss_start, 0, __bss_end - __bss_start);
+
+	arch_cpu_init();
 
 	board_init_r(NULL, 0);
 }

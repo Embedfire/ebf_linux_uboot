@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2010-2011 Freescale Semiconductor, Inc.
+ * Copyright 2018 NXP
  */
 
 #include <common.h>
@@ -58,6 +59,12 @@ void setup_gpmi_io_clk(u32 cfg)
 			cfg);
 
 	setbits_le32(&imx_ccm->CCGR4, MXC_CCM_CCGR4_QSPI2_ENFC_MASK);
+#elif defined(CONFIG_MX6UL) || defined(CONFIG_MX6ULL)
+	clrsetbits_le32(&imx_ccm->cs2cdr,
+			MXC_CCM_CS2CDR_ENFC_CLK_PODF_MASK |
+			MXC_CCM_CS2CDR_ENFC_CLK_PRED_MASK |
+			MXC_CCM_CS2CDR_ENFC_CLK_SEL_MASK,
+			cfg);
 #else
 	clrbits_le32(&imx_ccm->CCGR2, MXC_CCM_CCGR2_IOMUX_IPT_CLK_IO_MASK);
 
@@ -849,6 +856,65 @@ int enable_lcdif_clock(u32 base_addr, bool enable)
 
 	return 0;
 }
+
+int enable_lvds_bridge(u32 lcd_base_addr)
+{
+	u32 reg = 0;
+	struct iomuxc *iomux = (struct iomuxc *)IOMUXC_BASE_ADDR;
+
+	if (is_cpu_type(MXC_CPU_MX6SX)) {
+		if ((lcd_base_addr != LCDIF1_BASE_ADDR) &&
+		    (lcd_base_addr != LCDIF2_BASE_ADDR)) {
+			puts("Wrong LCD interface!\n");
+			return -EINVAL;
+		}
+	} else {
+		debug("This chip not support lvds bridge!\n");
+		return 0;
+	}
+
+	/* Turn on LDB DI0 clocks */
+	reg = readl(&imx_ccm->CCGR3);
+	reg |=  MXC_CCM_CCGR3_LDB_DI0_MASK;
+	writel(reg, &imx_ccm->CCGR3);
+
+	/* set LDB DI0 clk select to 011 PLL2 PFD3 200M*/
+	reg = readl(&imx_ccm->cs2cdr);
+	reg &= ~MXC_CCM_CS2CDR_LDB_DI0_CLK_SEL_MASK;
+	reg |= (3 << MXC_CCM_CS2CDR_LDB_DI0_CLK_SEL_OFFSET);
+	writel(reg, &imx_ccm->cs2cdr);
+
+	reg = readl(&imx_ccm->cscmr2);
+	reg |= MXC_CCM_CSCMR2_LDB_DI0_IPU_DIV;
+	writel(reg, &imx_ccm->cscmr2);
+
+	/* set LDB DI0 clock for LCDIF PIX clock */
+	reg = readl(&imx_ccm->cscdr2);
+	if (lcd_base_addr == LCDIF1_BASE_ADDR) {
+		reg &= ~MXC_CCM_CSCDR2_LCDIF1_CLK_SEL_MASK;
+		reg |= (0x3 << MXC_CCM_CSCDR2_LCDIF1_CLK_SEL_OFFSET);
+	} else {
+		reg &= ~MXC_CCM_CSCDR2_LCDIF2_CLK_SEL_MASK;
+		reg |= (0x3 << MXC_CCM_CSCDR2_LCDIF2_CLK_SEL_OFFSET);
+	}
+	writel(reg, &imx_ccm->cscdr2);
+
+	reg = IOMUXC_GPR2_DI0_VS_POLARITY_ACTIVE_LOW
+		| IOMUXC_GPR2_BIT_MAPPING_CH0_SPWG
+		| IOMUXC_GPR2_DATA_WIDTH_CH0_18BIT
+		| IOMUXC_GPR2_LVDS_CH0_MODE_ENABLED_DI0;
+	writel(reg, &iomux->gpr[6]);
+
+	reg = readl(&iomux->gpr[5]);
+	if (lcd_base_addr == LCDIF1_BASE_ADDR)
+		reg &= ~0x8;  /* MUX LVDS to LCDIF1 */
+	else
+		reg |= 0x8; /* MUX LVDS to LCDIF2 */
+	writel(reg, &iomux->gpr[5]);
+
+	return 0;
+}
+
 #endif
 
 #ifdef CONFIG_FSL_QSPI
@@ -898,6 +964,18 @@ void enable_qspi_clk(int qspi_num)
 	default:
 		break;
 	}
+}
+#endif
+
+#if defined(CONFIG_VIDEO_GIS)
+void mxs_set_vadcclk()
+{
+	u32 reg = 0;
+
+	reg = readl(&imx_ccm->cscmr2);
+	reg &= ~MXC_CCM_CSCMR2_VID_CLK_SEL_MASK;
+	reg |= 0x19 << MXC_CCM_CSCMR2_VID_CLK_SEL_OFFSET;
+	writel(reg, &imx_ccm->cscmr2);
 }
 #endif
 
@@ -1041,7 +1119,7 @@ u32 imx_get_fecclk(void)
 	return mxc_get_clock(MXC_IPG_CLK);
 }
 
-#if defined(CONFIG_SATA) || defined(CONFIG_PCIE_IMX)
+#if defined(CONFIG_SATA) || defined(CONFIG_IMX_AHCI) || defined(CONFIG_PCIE_IMX)
 static int enable_enet_pll(uint32_t en)
 {
 	struct mxc_ccm_reg *const imx_ccm
@@ -1068,7 +1146,7 @@ static int enable_enet_pll(uint32_t en)
 }
 #endif
 
-#ifdef CONFIG_SATA
+#if defined(CONFIG_SATA) || defined(CONFIG_IMX_AHCI)
 static void ungate_sata_clock(void)
 {
 	struct mxc_ccm_reg *const imx_ccm =
@@ -1094,6 +1172,15 @@ void disable_sata_clock(void)
 #endif
 
 #ifdef CONFIG_PCIE_IMX
+static void ungate_disp_axi_clock(void)
+{
+	struct mxc_ccm_reg *const imx_ccm =
+		(struct mxc_ccm_reg *)CCM_BASE_ADDR;
+
+	/* Enable display axi clock. */
+	setbits_le32(&imx_ccm->CCGR3, MXC_CCM_CCGR3_DISP_AXI_MASK);
+}
+
 static void ungate_pcie_clock(void)
 {
 	struct mxc_ccm_reg *const imx_ccm =
@@ -1141,14 +1228,22 @@ int enable_pcie_clock(void)
 	/* PCIe reference clock sourced from AXI. */
 	clrbits_le32(&ccm_regs->cbcmr, MXC_CCM_CBCMR_PCIE_AXI_CLK_SEL);
 
+	if (!is_mx6sx()) {
 	/* Party time! Ungate the clock to the PCIe. */
-#ifdef CONFIG_SATA
-	ungate_sata_clock();
+#if defined(CONFIG_SATA) || defined(CONFIG_IMX_AHCI)
+		ungate_sata_clock();
 #endif
-	ungate_pcie_clock();
+		ungate_pcie_clock();
 
-	return enable_enet_pll(BM_ANADIG_PLL_ENET_ENABLE_SATA |
-			       BM_ANADIG_PLL_ENET_ENABLE_PCIE);
+		return enable_enet_pll(BM_ANADIG_PLL_ENET_ENABLE_SATA |
+				       BM_ANADIG_PLL_ENET_ENABLE_PCIE);
+	} else {
+		/* Party time! Ungate the clock to the PCIe. */
+		ungate_disp_axi_clock();
+		ungate_pcie_clock();
+
+		return enable_enet_pll(BM_ANADIG_PLL_ENET_ENABLE_PCIE);
+	}
 }
 #endif
 
@@ -1337,7 +1432,7 @@ int do_mx6_showclocks(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	return 0;
 }
 
-#if defined(CONFIG_MX6Q) || defined(CONFIG_MX6D) || defined(CONFIG_MX6DL) || \
+#if defined(CONFIG_MX6QDL) || defined(CONFIG_MX6Q) || defined(CONFIG_MX6DL) || \
 	defined(CONFIG_MX6S)
 static void disable_ldb_di_clock_sources(void)
 {
@@ -1485,6 +1580,38 @@ void select_ldb_di_clock_source(enum ldb_di_clock clk)
 
 	enable_ldb_di_clock_sources();
 }
+#endif
+
+
+#if defined(CONFIG_MXC_EPDC)
+#if defined(CONFIG_MX6ULL) || defined(CONFIG_MX6SLL)
+void enable_epdc_clock(void)
+{
+	u32 reg = 0;
+
+	/* disable the clock gate first */
+	clrbits_le32(&imx_ccm->CCGR3, MXC_CCM_CCGR3_EPDC_CLK_ENABLE_MASK);
+
+	/* PLL3_PFD2 */
+	reg = readl(&imx_ccm->chsccdr);
+	reg &= ~MXC_CCM_CHSCCDR_EPDC_PRE_CLK_SEL_MASK;
+	reg |= 5 << MXC_CCM_CHSCCDR_EPDC_PRE_CLK_SEL_OFFSET;
+	writel(reg, &imx_ccm->chsccdr);
+
+	reg = readl(&imx_ccm->chsccdr);
+	reg &= ~MXC_CCM_CHSCCDR_EPDC_PODF_MASK;
+	reg |= 7 << MXC_CCM_CHSCCDR_EPDC_PODF_OFFSET;
+	writel(reg, &imx_ccm->chsccdr);
+
+	reg = readl(&imx_ccm->chsccdr);
+	reg &= ~MXC_CCM_CHSCCDR_EPDC_CLK_SEL_MASK;
+	reg |= 0 <<MXC_CCM_CHSCCDR_EPDC_CLK_SEL_OFFSET;
+	writel(reg, &imx_ccm->chsccdr);
+
+	/* enable the clock gate */
+	setbits_le32(&imx_ccm->CCGR3, MXC_CCM_CCGR3_EPDC_CLK_ENABLE_MASK);
+}
+#endif
 #endif
 
 /***************************************************/

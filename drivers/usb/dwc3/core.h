@@ -73,6 +73,7 @@
 #define DWC3_GCTL		0xc110
 #define DWC3_GEVTEN		0xc114
 #define DWC3_GSTS		0xc118
+#define DWC3_GUCTL1		0xc11c
 #define DWC3_GSNPSID		0xc120
 #define DWC3_GGPIO		0xc124
 #define DWC3_GUID		0xc128
@@ -158,6 +159,9 @@
 #define DWC3_GCTL_U2EXIT_LFPS		(1 << 2)
 #define DWC3_GCTL_GBLHIBERNATIONEN	(1 << 1)
 #define DWC3_GCTL_DSBLCLKGTNG		(1 << 0)
+
+/* Disable park mode for super speed */
+#define DWC3_GUCTL1_PARKMODE_DISABLE_SS BIT(17)
 
 /* Global USB2 PHY Configuration Register */
 #define DWC3_GUSB2PHYCFG_PHYSOFTRST	(1 << 31)
@@ -650,6 +654,7 @@ struct dwc3_scratchpad_array {
  * @dr_mode: requested mode of operation
  * @dcfg: saved contents of DCFG register
  * @gctl: saved contents of GCTL register
+ * @power_down_scale: 16KHz clock periods for suspend_clk
  * @isoch_delay: wValue from Set Isochronous Delay request;
  * @u2sel: parameter from Set SEL request.
  * @u2pel: parameter from Set SEL request.
@@ -774,6 +779,7 @@ struct dwc3 {
 	enum dwc3_ep0_state	ep0state;
 	enum dwc3_link_state	link_state;
 
+	u16			power_down_scale;
 	u16			isoch_delay;
 	u16			u2sel;
 	u16			u2pel;

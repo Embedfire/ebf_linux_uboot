@@ -800,9 +800,13 @@ config ARCH_IMX8
 config ARCH_IMX8M
 	bool "NXP i.MX8M platform"
 	select ARM64
+	select SYS_FSL_HAS_SEC if IMX_HAB
+	select SYS_FSL_SEC_COMPAT_4
+	select SYS_FSL_SEC_LE
 	select DM
 	select SUPPORT_SPL
 	imply CMD_DM
+	select IMX_SEC_INIT if HAS_CAAM
 
 config ARCH_IMXRT
 	bool "NXP i.MXRT platform"
@@ -836,7 +840,11 @@ config ARCH_MX31
 config ARCH_MX7ULP
 	bool "NXP MX7ULP"
 	select CPU_V7A
+	select SYS_FSL_HAS_SEC if IMX_HAB
+	select SYS_FSL_SEC_COMPAT_4
+	select SYS_FSL_SEC_LE
 	select ROM_UNIFIED_SECTIONS
+	select IMX_SEC_INIT if HAS_CAAM
 	imply MXC_GPIO
 	imply SYS_THUMB_BUILD
 
@@ -848,6 +856,7 @@ config ARCH_MX7
 	select SYS_FSL_HAS_SEC if IMX_HAB
 	select SYS_FSL_SEC_COMPAT_4
 	select SYS_FSL_SEC_LE
+	select IMX_SEC_INIT if HAS_CAAM
 	imply MXC_GPIO
 	imply SYS_THUMB_BUILD
 
@@ -857,6 +866,7 @@ config ARCH_MX6
 	select SYS_FSL_HAS_SEC if IMX_HAB
 	select SYS_FSL_SEC_COMPAT_4
 	select SYS_FSL_SEC_LE
+	select IMX_SEC_INIT if HAS_CAAM
 	imply MXC_GPIO
 	imply SYS_THUMB_BUILD
 

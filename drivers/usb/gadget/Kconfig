@@ -101,6 +101,7 @@ endif # USB_GADGET_DWC2_OTG
 config CI_UDC
 	bool "ChipIdea device controller"
 	select USB_GADGET_DUALSPEED
+	imply DM_USB_GADGET
 	help
 	  Say Y here to enable device controller functionality of the
 	  ChipIdea driver.
@@ -121,6 +122,10 @@ config USB_GADGET_VBUS_DRAW
 
 	   This value will be used except for system-specific gadget
 	   drivers that have more specific information.
+
+config SDP_LOADADDR
+	hex "Default load address at SDP_WRITE and SDP_JUMP"
+	default 0
 
 # Selected by UDC drivers that support high-speed operation.
 config USB_GADGET_DUALSPEED
@@ -160,6 +165,15 @@ config USB_FUNCTION_THOR
 	help
 	  Enable Tizen's THOR download protocol support in U-Boot. It
 	  allows downloading images into memory and flash them to target device.
+
+config USB_PORT_AUTO
+	bool "Enable USB port autodetect"
+	depends on CI_UDC
+	help
+	  Enable usb port autodetect function for i.MX8. There two usb ports -
+	  usb2 and usb3 on i.MX8, when use SDP or fastboot which runs automatically
+	  when uboot starts, enable this config will autodetect the  connected usb
+	  port instead of specify USB port to download in code.
 
 endif # USB_GADGET_DOWNLOAD
 

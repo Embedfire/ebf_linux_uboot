@@ -67,6 +67,9 @@ struct driver_info;
 /* Driver platdata has been read. Cleared when the device is removed */
 #define DM_FLAG_PLATDATA_VALID		(1 << 12)
 
+/* DM should ignore the assign default clocks for this driver */
+#define DM_FLAG_IGNORE_DEFAULT_CLKS		(1 << 13)
+
 /*
  * Device is removed without switching off its power domain. This might
  * be required, i. e. for serial console (debug) output when booting OS.
@@ -258,6 +261,7 @@ struct driver {
 	int (*child_post_bind)(struct udevice *dev);
 	int (*child_pre_probe)(struct udevice *dev);
 	int (*child_post_remove)(struct udevice *dev);
+	int (*handle_interrupts)(struct udevice *dev);
 	int priv_auto_alloc_size;
 	int platdata_auto_alloc_size;
 	int per_child_auto_alloc_size;

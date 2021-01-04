@@ -14,7 +14,14 @@ static int spl_sdp_load_image(struct spl_image_info *spl_image,
 			      struct spl_boot_device *bootdev)
 {
 	int ret;
-	const int controller_index = 0;
+	int index;
+	int controller_index = CONFIG_SPL_SDP_USB_DEV;
+
+	index = board_usb_gadget_port_auto();
+	if (index >= 0)
+		controller_index = index;
+
+	usb_gadget_initialize(controller_index);
 
 	g_dnl_clear_detach();
 	ret = g_dnl_register("usb_dnl_sdp");
@@ -37,6 +44,7 @@ static int spl_sdp_load_image(struct spl_image_info *spl_image,
 	ret = spl_sdp_handle(controller_index, spl_image);
 	debug("SDP ended\n");
 
+	usb_gadget_release(controller_index);
 	return ret;
 }
 SPL_LOAD_IMAGE_METHOD("USB SDP", 0, BOOT_DEVICE_BOARD, spl_sdp_load_image);

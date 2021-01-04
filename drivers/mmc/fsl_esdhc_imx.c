@@ -29,6 +29,8 @@
 #include <dm.h>
 #include <asm-generic/gpio.h>
 #include <dm/pinctrl.h>
+#include <asm/arch/sys_proto.h>
+#include <linux/iopoll.h>
 
 #if !CONFIG_IS_ENABLED(BLK)
 #include "mmc_private.h"
@@ -133,6 +135,8 @@ struct fsl_esdhc_priv {
 	struct fsl_esdhc *esdhc_regs;
 	unsigned int sdhc_clk;
 	struct clk per_clk;
+	struct clk ipg_clk;
+	struct clk ahb_clk;
 	unsigned int clock;
 	unsigned int mode;
 	unsigned int bus_width;
@@ -619,6 +623,8 @@ static void set_sysctl(struct fsl_esdhc_priv *priv, struct mmc *mmc, uint clock)
 {
 	struct fsl_esdhc *regs = priv->esdhc_regs;
 	int div = 1;
+	u32 tmp;
+	int ret;
 #ifdef ARCH_MXC
 #ifdef CONFIG_MX53
 	/* For i.MX53 eSDHCv3, SYSCTL.SDCLKFS may not be set to 0. */
@@ -629,15 +635,27 @@ static void set_sysctl(struct fsl_esdhc_priv *priv, struct mmc *mmc, uint clock)
 #else
 	int pre_div = 2;
 #endif
-	int ddr_pre_div = mmc->ddr_mode ? 2 : 1;
 	int sdhc_clk = priv->sdhc_clk;
 	uint clk;
 
-	while (sdhc_clk / (16 * pre_div * ddr_pre_div) > clock && pre_div < 256)
-		pre_div *= 2;
+	/*
+	 * For ddr mode, usdhc need to enable DDR mode first, after select
+	 * this DDR mode, usdhc will automatically divide the usdhc clock
+	 */
+	if (mmc->ddr_mode) {
+		writel(readl(&regs->mixctrl) | MIX_CTRL_DDREN, &regs->mixctrl);
+		sdhc_clk >>= 1;
+	}
 
-	while (sdhc_clk / (div * pre_div * ddr_pre_div) > clock && div < 16)
-		div++;
+	if (sdhc_clk / 16 > clock) {
+		for (; pre_div < 256; pre_div *= 2)
+			if ((sdhc_clk / pre_div) <= (clock * 16))
+				break;
+	}
+
+	for (div = 1; div <= 16; div++)
+		if ((sdhc_clk / (div * pre_div)) <= clock)
+			break;
 
 	pre_div >>= 1;
 	div -= 1;
@@ -652,7 +670,9 @@ static void set_sysctl(struct fsl_esdhc_priv *priv, struct mmc *mmc, uint clock)
 
 	esdhc_clrsetbits32(&regs->sysctl, SYSCTL_CLOCK_MASK, clk);
 
-	udelay(10000);
+	ret = readl_poll_timeout(&regs->prsstat, tmp, tmp & PRSSTAT_SDSTB, 100);
+	if (ret)
+		pr_warn("fsl_esdhc_imx: Internal clock never stabilised.\n");
 
 #ifdef CONFIG_FSL_USDHC
 	esdhc_setbits32(&regs->vendorspec, VENDORSPEC_PEREN | VENDORSPEC_CKEN);
@@ -903,19 +923,9 @@ static int fsl_esdhc_execute_tuning(struct udevice *dev, uint32_t opcode)
 		ctrl = readl(&regs->autoc12err);
 		if ((!(ctrl & MIX_CTRL_EXE_TUNE)) &&
 		    (ctrl & MIX_CTRL_SMPCLK_SEL)) {
-			/*
-			 * need to wait some time, make sure sd/mmc fininsh
-			 * send out tuning data, otherwise, the sd/mmc can't
-			 * response to any command when the card still out
-			 * put the tuning data.
-			 */
-			mdelay(1);
 			ret = 0;
 			break;
 		}
-
-		/* Add 1ms delay for SD and eMMC */
-		mdelay(1);
 	}
 
 	writel(irqstaten, &regs->irqstaten);
@@ -1262,6 +1272,18 @@ static int fsl_esdhc_init(struct fsl_esdhc_priv *priv,
 			val |= priv->tuning_start_tap;
 			val &= ~ESDHC_TUNING_STEP_MASK;
 			val |= (priv->tuning_step) << ESDHC_TUNING_STEP_SHIFT;
+
+			/* Disable the CMD CRC check for tuning, if not, need to
+			 * add some delay after every tuning command, because
+			 * hardware standard tuning logic will directly go to next
+			 * step once it detect the CMD CRC error, will not wait for
+			 * the card side to finally send out the tuning data, trigger
+			 * the buffer read ready interrupt immediately. If usdhc send
+			 * the next tuning command some eMMC card will stuck, can't
+			 * response, block the tuning procedure or the first command
+			 * after the whole tuning procedure always can't get any response.
+			 */
+			val |= ESDHC_TUNING_CMD_CRC_CHECK_DISABLE;
 			writel(val, &regs->tuning_ctrl);
 		}
 	}
@@ -1294,6 +1316,13 @@ int fsl_esdhc_initialize(bd_t *bis, struct fsl_esdhc_cfg *cfg)
 
 	if (!cfg)
 		return -EINVAL;
+
+#ifdef CONFIG_MX6
+	if (mx6_esdhc_fused(cfg->esdhc_base)) {
+		printf("ESDHC@0x%lx is fused, disable it\n", cfg->esdhc_base);
+		return -ENODEV;
+	}
+#endif
 
 	priv = calloc(sizeof(struct fsl_esdhc_priv), 1);
 	if (!priv)
@@ -1394,6 +1423,14 @@ static int fsl_esdhc_probe(struct udevice *dev)
 	addr = dev_read_addr(dev);
 	if (addr == FDT_ADDR_T_NONE)
 		return -EINVAL;
+
+#ifdef CONFIG_MX6
+	if (mx6_esdhc_fused(addr)) {
+		printf("ESDHC@0x%lx is fused, disable it\n", addr);
+		return -ENODEV;
+	}
+#endif
+
 	priv->esdhc_regs = (struct fsl_esdhc *)addr;
 	priv->dev = dev;
 	priv->mode = -1;
@@ -1482,10 +1519,26 @@ static int fsl_esdhc_probe(struct udevice *dev)
 	 * work as expected.
 	 */
 
-	init_clk_usdhc(dev->seq);
-
 #if CONFIG_IS_ENABLED(CLK)
 	/* Assigned clock already set clock */
+	ret = clk_get_by_name(dev, "ipg", &priv->ipg_clk);
+	if (!ret) {
+		ret = clk_enable(&priv->ipg_clk);
+		if (ret) {
+			printf("Failed to enable ipg_clk\n");
+			return ret;
+		}
+	}
+
+	ret = clk_get_by_name(dev, "ahb", &priv->ahb_clk);
+	if (!ret) {
+		ret = clk_enable(&priv->ahb_clk);
+		if (ret) {
+			printf("Failed to enable ahb_clk\n");
+			return ret;
+		}
+	}
+
 	ret = clk_get_by_name(dev, "per", &priv->per_clk);
 	if (ret) {
 		printf("Failed to get per_clk\n");
@@ -1499,6 +1552,8 @@ static int fsl_esdhc_probe(struct udevice *dev)
 
 	priv->sdhc_clk = clk_get_rate(&priv->per_clk);
 #else
+	init_clk_usdhc(dev->seq);
+
 	priv->sdhc_clk = mxc_get_clock(MXC_ESDHC_CLK + dev->seq);
 	if (priv->sdhc_clk <= 0) {
 		dev_err(dev, "Unable to get clk for %s\n", dev->name);

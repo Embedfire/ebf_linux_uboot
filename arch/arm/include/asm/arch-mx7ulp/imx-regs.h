@@ -16,6 +16,8 @@
 #define CAAM_SEC_SRAM_SIZE      (SZ_32K)
 #define CAAM_SEC_SRAM_END       (CAAM_SEC_SRAM_BASE + CAAM_SEC_SRAM_SIZE - 1)
 
+#define CAAM_ARB_BASE_ADDR      CAAM_SEC_SRAM_BASE
+
 #define OCRAM_0_BASE            (0x2F000000)
 #define OCRAM_0_SIZE            (SZ_128K)
 #define OCRAM_0_END             (OCRAM_0_BASE + OCRAM_0_SIZE - 1)
@@ -65,6 +67,8 @@
 #define SIM1_PCC1_SLOT			(48)
 #define MMDC0_AIPS3_SLOT		(43)
 #define IOMUXC_DDR_AIPS3_SLOT		(45)
+#define DSI_AIPS3_SLOT			(41)
+#define LCDIF_AIPS3_SLOT		(42)
 
 #define LPI2C0_AIPS0_SLOT		(51)
 #define LPI2C1_AIPS0_SLOT		(52)
@@ -127,6 +131,9 @@
 #define SIM_SOPT1_PMIC_STBY_REQ		(1<<2)
 #define SIM_SOPT1_A7_SW_RESET		(1<<0)
 
+#define WKPU_WAKEUP_EN			0x88
+#define WKPU_QSPI_CHANNEL		BIT(20)
+
 #define IOMUXC_PCR_MUX_ALT_SHIFT	(8)
 #define IOMUXC_PCR_MUX_ALT_MASK		(0xF00)
 #define IOMUXC_PSMI_IMUX_ALT_SHIFT	(0)
@@ -178,6 +185,10 @@
 #define USDHC0_RBASE	((AIPS2_BASE + (AIPS2_SLOT_SIZE * USDHC0_AIPS2_SLOT)))
 #define USDHC1_RBASE	((AIPS2_BASE + (AIPS2_SLOT_SIZE * USDHC1_AIPS2_SLOT)))
 
+#define LCDIF_RBASE	((AIPS3_BASE + (AIPS3_SLOT_SIZE * LCDIF_AIPS3_SLOT)))
+#define MXS_LCDIF_BASE	LCDIF_RBASE
+
+
 #define SNVS_BASE	((AIPS2_BASE + (AIPS2_SLOT_SIZE * SNVS_AIPS2_SLOT)))
 #define SNVS_LP_LPCR	(SNVS_BASE + 0x38)
 
@@ -223,6 +234,16 @@
 
 #define IOMUXC_DDR_RBASE	((AIPS3_BASE + (AIPS3_SLOT_SIZE * IOMUXC_DDR_AIPS3_SLOT)))
 #define MMDC0_PCC_REG		(PCC3_RBASE + (4 * MMDC0_PCC3_SLOT))
+
+#define CAAM_IPS_BASE_ADDR              (AIPS2_BASE + 0x240000) /* 40240000 */
+
+#define CONFIG_SYS_FSL_SEC_OFFSET       0
+#define CONFIG_SYS_FSL_SEC_ADDR         (CAAM_IPS_BASE_ADDR + \
+					 CONFIG_SYS_FSL_SEC_OFFSET)
+#define CONFIG_SYS_FSL_JR0_OFFSET       0x1000
+#define CONFIG_SYS_FSL_JR0_ADDR         (CONFIG_SYS_FSL_SEC_ADDR + \
+					 CONFIG_SYS_FSL_JR0_OFFSET)
+#define CONFIG_SYS_FSL_MAX_NUM_OF_SEC   1
 
 #define IOMUXC_DPCR_DDR_DQS0	((IOMUXC_DDR_RBASE + (4 * 32)))
 #define IOMUXC_DPCR_DDR_DQS1	((IOMUXC_DDR_RBASE + (4 * 33)))
@@ -945,12 +966,15 @@
 
 #define SNVS_LPCR_DPEN				(0x20)
 #define SNVS_LPCR_SRTC_ENV			(0x1)
+#define SNVS_BASE_REVB				(0x41070000)
+#define SNVS_HPSR_REVB				(SNVS_BASE_REVB + 0x14)
 
 #define SRC_BASE_ADDR			CMC1_RBASE
 #define IRAM_BASE_ADDR			OCRAM_0_BASE
 #define IOMUXC_BASE_ADDR		IOMUXC1_RBASE
 
 #if !(defined(__KERNEL_STRICT_NAMES) || defined(__ASSEMBLY__))
+#include <asm/mach-imx/regs-lcdif.h>
 
 #include <asm/types.h>
 
@@ -1137,7 +1161,9 @@ struct bootrom_sw_info {
 	u32 reserved_3[3];
 };
 
-#define	is_boot_from_usb(void)		(!(readl(USB_PHY0_BASE_ADDR) & (1<<20)))
+#include <stdbool.h>
+bool is_usb_boot(void);
+#define is_boot_from_usb  is_usb_boot
 #define	disconnect_from_pc(void)	writel(0x0, USBOTG0_RBASE + 0x140)
 
 #endif

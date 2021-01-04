@@ -183,11 +183,11 @@ static int print_cpuinfo(void)
 	char desc[512];
 	int ret;
 
-	ret = uclass_first_device_err(UCLASS_CPU, &dev);
-	if (ret) {
-		debug("%s: Could not get CPU device (err = %d)\n",
-		      __func__, ret);
-		return ret;
+	dev = cpu_get_current_dev();
+	if (!dev) {
+		debug("%s: Could not get CPU device\n",
+		      __func__);
+		return -ENODEV;
 	}
 
 	ret = cpu_get_desc(dev, desc, sizeof(desc));
@@ -910,7 +910,9 @@ static const init_fnc_t init_sequence_f[] = {
 #endif
 	env_init,		/* initialize environment */
 	init_baud_rate,		/* initialze baudrate settings */
+#ifndef CONFIG_ANDROID_AUTO_SUPPORT
 	serial_init,		/* serial communications setup */
+#endif
 	console_init_f,		/* stage 1 init of console */
 	display_options,	/* say that we are here */
 	display_text_info,	/* show debugging info if required */

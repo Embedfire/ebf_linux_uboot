@@ -41,7 +41,7 @@ static int mmc_load_legacy(struct spl_image_info *spl_image, struct mmc *mmc,
 	return 0;
 }
 
-static ulong h_spl_load_read(struct spl_load_info *load, ulong sector,
+ulong h_spl_load_read(struct spl_load_info *load, ulong sector,
 			     ulong count, void *buf)
 {
 	struct mmc *mmc = load->dev;
@@ -56,6 +56,16 @@ static __maybe_unused unsigned long spl_mmc_raw_uboot_offset(int part)
 		return CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET;
 #endif
 
+	return 0;
+}
+
+#if defined(CONFIG_DUAL_BOOTLOADER)
+int mmc_load_image_raw_sector_dual_uboot(struct spl_image_info *spl_image,
+					 struct mmc *mmc);
+#endif
+
+int __weak mmc_image_load_late(struct mmc *mmc)
+{
 	return 0;
 }
 
@@ -111,7 +121,8 @@ end:
 		return -1;
 	}
 
-	return 0;
+	ret = mmc_image_load_late(mmc);
+	return ret;
 }
 
 static int spl_mmc_get_device_index(u32 boot_device)
@@ -178,7 +189,7 @@ static int mmc_load_image_raw_partition(struct spl_image_info *spl_image,
 		err = part_get_info(mmc_get_blk_desc(mmc), type_part, &info);
 		if (err)
 			continue;
-		if (info.sys_ind == 
+		if (info.sys_ind ==
 			CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_PARTITION_TYPE) {
 			partition = type_part;
 			break;
@@ -323,6 +334,34 @@ unsigned long __weak spl_mmc_get_uboot_raw_sector(struct mmc *mmc,
 	return raw_sect;
 }
 
+int __weak spl_mmc_emmc_boot_partition(struct mmc *mmc)
+{
+	int part = 0;
+
+#ifdef CONFIG_DUAL_BOOTLOADER
+	/* Bootloader is stored in eMMC user partition for
+	 * dual bootloader.
+	 */
+	part = 0;
+#else
+#ifdef CONFIG_SYS_MMCSD_RAW_MODE_EMMC_BOOT_PARTITION
+	part = CONFIG_SYS_MMCSD_RAW_MODE_EMMC_BOOT_PARTITION;
+#else
+	/*
+	 * We need to check what the partition is configured to.
+	 * 1 and 2 match up to boot0 / boot1 and 7 is user data
+	 * which is the first physical partition (0).
+	 */
+	part = (mmc->part_config >> 3) & PART_ACCESS_MASK;
+
+	if (part == 7)
+		part = 0;
+#endif
+#endif
+
+	return part;
+}
+
 int spl_mmc_load(struct spl_image_info *spl_image,
 		 struct spl_boot_device *bootdev,
 		 const char *filename,
@@ -354,19 +393,7 @@ int spl_mmc_load(struct spl_image_info *spl_image,
 	err = -EINVAL;
 	switch (boot_mode) {
 	case MMCSD_MODE_EMMCBOOT:
-#ifdef CONFIG_SYS_MMCSD_RAW_MODE_EMMC_BOOT_PARTITION
-		part = CONFIG_SYS_MMCSD_RAW_MODE_EMMC_BOOT_PARTITION;
-#else
-		/*
-		 * We need to check what the partition is configured to.
-		 * 1 and 2 match up to boot0 / boot1 and 7 is user data
-		 * which is the first physical partition (0).
-		 */
-		part = (mmc->part_config >> 3) & PART_ACCESS_MASK;
-
-		if (part == 7)
-			part = 0;
-#endif
+		part = spl_mmc_emmc_boot_partition(mmc);
 
 		if (CONFIG_IS_ENABLED(MMC_TINY))
 			err = mmc_switch_part(mmc, part);
@@ -389,7 +416,9 @@ int spl_mmc_load(struct spl_image_info *spl_image,
 				return err;
 		}
 
+#ifndef CONFIG_DUAL_BOOTLOADER
 		raw_sect = spl_mmc_get_uboot_raw_sector(mmc, raw_sect);
+#endif
 
 #ifdef CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION
 		err = mmc_load_image_raw_partition(spl_image, mmc, raw_part,
@@ -398,8 +427,12 @@ int spl_mmc_load(struct spl_image_info *spl_image,
 			return err;
 #endif
 #ifdef CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_USE_SECTOR
+#ifdef CONFIG_DUAL_BOOTLOADER
+		err = mmc_load_image_raw_sector_dual_uboot(spl_image, mmc);
+#else
 		err = mmc_load_image_raw_sector(spl_image, mmc,
 				raw_sect + spl_mmc_raw_uboot_offset(part));
+#endif
 		if (!err)
 			return err;
 #endif

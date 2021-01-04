@@ -10,6 +10,9 @@ config IMX8M_LPDDR4
 	help
 	  Select the i.MX8M LPDDR4 driver support on i.MX8M SOC.
 
+config IMX8M_4G_LPDDR4
+	bool "imx8m 4GB LPDDR4"
+
 config IMX8M_DDR4
 	bool "imx8m ddr4"
 	select IMX8M_DRAM
@@ -29,4 +32,11 @@ config SAVED_DRAM_TIMING_BASE
 	  info into memory for low power use. OCRAM_S is used for this
 	  purpose on i.MX8MM.
 	default 0x180000
+
+config IMX8M_DRAM_INLINE_ECC
+	bool "imx8mp inline ECC"
+	depends on IMX8MP && IMX8M_LPDDR4
+	help
+	  Select this config if you want to use inline ecc feature for
+	  imx8mp-evk board.
 endmenu

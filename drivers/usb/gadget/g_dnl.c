@@ -277,6 +277,7 @@ static struct usb_composite_driver g_dnl_driver = {
 	.name = NULL,
 	.dev = &device_desc,
 	.strings = g_dnl_composite_strings,
+	.max_speed = USB_SPEED_SUPER,
 
 	.bind = g_dnl_bind,
 	.unbind = g_dnl_unbind,
@@ -305,4 +306,9 @@ int g_dnl_register(const char *name)
 void g_dnl_unregister(void)
 {
 	usb_composite_unregister(&g_dnl_driver);
+}
+
+int __weak board_usb_gadget_port_auto(void)
+{
+	return -1;
 }
