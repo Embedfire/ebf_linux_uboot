@@ -151,7 +151,7 @@
 	u-boot,dm-spl;
 };
 
-&sdmmc2_b4_pins_a {
+&sdmmc2_b4_pins_b {
 	u-boot,dm-spl;
 	pins1 {
 		u-boot,dm-spl;
