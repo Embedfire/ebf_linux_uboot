@@ -15,7 +15,7 @@
 
 static int do_dtfile(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
-	char *data, *sp, *dp, *name, *value = NULL,*ptr,*env_file;
+	char *data, *sp, *dp, *name, *value = NULL,*ptr,*env_file, *buf;
 	ulong file_addr,dt_addr,overlay_addr;
 	loff_t	size;
 	int param_num = 0;
@@ -37,7 +37,9 @@ static int do_dtfile(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 	file_addr = simple_strtoul(argv[4], NULL, 16);
 
-	load_env_file(env_file,file_addr,&size);
+//	load_env_file(env_file,file_addr,&size);
+    buf = env_get("size");
+	size = simple_strtoul(buf, NULL, 16);
 
 	ptr = map_sysmem(file_addr, 0);
 
@@ -82,9 +84,7 @@ static int do_dtfile(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 			continue;
 		}
 		/* parse name */
-
-		for (name = dp; *dp != '=' && *dp && *dp != '\n'; ++dp)
-			;
+		for (name = dp; *dp != '=' && *dp && *dp != '\n'; ++dp);
 			/* deal with "name" and "name=" entries (delete var) */
 		if (*dp == '\0' || *(dp + 1) == '\0' ||
 			*dp == '\n' || *(dp + 1) == '\n') {
