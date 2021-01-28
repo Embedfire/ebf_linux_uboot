@@ -1750,12 +1750,11 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
 
 	len = strlen(dt_file) - 5;
 
-	dtoverlay_debug("loading overlay：%s\n",dt_file);
+	dtoverlay_debug("loading overlay: %s\n",dt_file);
 
 	if ((len > 0) && (strcmp(dt_file + len, ".dtbo") == 0))
 	{
 		#if defined(CONFIG_SYS_BOOT_NAND)
-		dtoverlay_debug("%d",__LINE__);
 		ubifs_load(dt_file,fdt,0);
 		bytes_read = env_get_hex("filesize", 0);
 		if (!bytes_read) 
