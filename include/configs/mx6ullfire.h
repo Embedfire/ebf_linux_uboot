@@ -77,11 +77,11 @@
 					"setenv flashtype ${storage_media};"  \
 			"fi;" \
 			"echo loading vmlinuz-${uname_r} ...; "\
-			"load ramblock 0:1 0x80800000 /vmlinuz-${uname_r};"\
+			"load ramblock 0:1 0x80800000 /kernel/vmlinuz-${uname_r};"\
 			"echo loading ${dtb} ...; "\
 			"ubifsload 0x83000000 /usr/lib/linux-image-${uname_r}/${dtb};"\
 			"dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
-			"load ramblock 0:1 0x88000000 /initrd.img-${uname_r};"\
+			"load ramblock 0:1 0x88000000 /kernel/initrd.img-${uname_r};"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
 			"bootz 0x80800000 0x88000000:${filesize} 0x83000000;"	\
@@ -184,11 +184,11 @@
 			"fi;" \
 			"run args_mmc_old;" \
 			"echo loading vmlinuz-${uname_r} ...; "\
-			"load ${devtype} ${bootpart} 0x80800000 /vmlinuz-${uname_r};"\
+			"load ${devtype} ${bootpart} 0x80800000 /kernel/vmlinuz-${uname_r};"\
 			"echo loading ${dtb} ...; "\
 			"load ${devtype} ${rootfpart} 0x83000000 /usr/lib/linux-image-${uname_r}/${dtb};"\
 			"dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
-			"load ${devtype} ${bootpart} 0x88000000 /initrd.img-${uname_r};"\
+			"load ${devtype} ${bootpart} 0x88000000 /kernel/initrd.img-${uname_r};"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
 			"bootz 0x80800000 0x88000000:${filesize} 0x83000000;"	\
