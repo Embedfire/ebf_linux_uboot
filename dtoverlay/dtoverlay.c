@@ -1747,7 +1747,7 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
 	loff_t bytes_read = max_size;
 	int dtb_len;
 	int len;
-
+	char *buf = NULL;
 	len = strlen(dt_file) - 5;
 
 	dtoverlay_debug("loading overlay: %s\n",dt_file);
@@ -1758,26 +1758,27 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
 		ubifs_load(dt_file,fdt,0);
 		bytes_read = env_get_hex("filesize", 0);
 		if (!bytes_read) 
-      if (!bytes_read) 
-		if (!bytes_read) 
-      if (!bytes_read) 
-		if (!bytes_read) 
 		{
 			dtoverlay_debug("** %s read error\n",dt_file);
 		}
-
 		#else
+		const char *ifname = env_fat_get_intf();
+		const char *dev_and_part;
+		buf = env_get("boot_targets");
 
-//      int dev = mmc_get_env_dev();
+		//dtoverlay_debug("%s %d\n",buf,__LINE__);
 
-//      if (!dev)
-//      fs_set_blk_dev("mmc", "0:2", FS_TYPE_ANY);
-//      else 
-//      fs_set_blk_dev("mmc", "1:2", FS_TYPE_ANY);
-	  const char *ifname = env_fat_get_intf();
-	  const char *dev_and_part = env_fat_get_dev_part();
+		if(!strcmp(buf, "mmc0"))
+		{
+			dev_and_part="0:6";
+		}
+		else if(!strcmp(buf, "mmc1"))
+		{
+			dev_and_part="1:4";
+		}
+		//dtoverlay_debug("%s \n",dev_and_part);
 
-	  fs_set_blk_dev(ifname, dev_and_part, FS_TYPE_ANY);
+	 	fs_set_blk_dev(ifname, dev_and_part, FS_TYPE_ANY);
 
 		if(fs_read(dt_file,fdt,0,0,&bytes_read)<0)
 			dtoverlay_debug("** %s read error\n",dt_file);
