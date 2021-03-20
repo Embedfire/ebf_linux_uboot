@@ -165,8 +165,36 @@
 			"else " \
 				"echo WARN: Cannot load the DT; " \
 			"fi; " \
-		"fi;\0"
-
+		"fi;\0" \
+	"args_mmc_old=setenv bootargs console=ttymxc1 " \
+		"root=/dev/mmcblk${mmcdev}p2 rw " \
+		"rootfstype=ext4 " \
+		"rootwait ${cmdline} ${flashtype}\0" \
+	"boot=mmc check;${devtype} dev ${mmcdev};mmc rescan; " \
+		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
+		"if run loaduEnv; then " \
+			"run importbootenv;" \
+			"if test ${second_flash} = emmc; then " \
+					"setenv dtb ${mmc_dtb};"  \
+					"setenv storage_media init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh;"  \
+				"else " \
+					"setenv dtb ${nand_dtb};"  \
+					"setenv storage_media init=/opt/scripts/tools/Nand/init-Nand-flasher-v1.sh;"  \
+				"fi; " \
+			"if test -n ${flash_firmware}; then "  \
+					"echo setting flash firmware...;"  \
+					"setenv flashtype ${storage_media};"  \
+			"fi;" \
+			"run args_mmc_old;" \
+			"echo loading vmlinuz-${uname_r} ...; "\
+			"load ${devtype} ${bootpart} 0x40480000 /kernel/vmlinuz-${uname_r};"\
+			"echo loading ${dtb} ...; "\
+			"load ${devtype} ${rootfpart} 0x43000000 /usr/lib/linux-image-${uname_r}/${dtb};"\
+			"echo debug: [${bootargs}] ... ;" \
+			"echo debug: [bootz] ...  ;" \
+			"booti 0x40480000 - 0x43000000;"	\
+		"fi;\0" \
+/*
 #define CONFIG_BOOTCOMMAND \
 	   "mmc dev ${mmcdev}; if mmc rescan; then " \
 		   "if run loadbootscript; then " \
@@ -178,7 +206,10 @@
 			   "fi; " \
 		   "fi; " \
 	   "fi;"
+	   "dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
+*/
 #endif
+
 
 /* Link Definitions */
 #define CONFIG_LOADADDR			0x40480000
@@ -292,5 +323,22 @@
 #if defined(CONFIG_ANDROID_SUPPORT)
 #include "imx8mm_evk_android.h"
 #endif
+
+#define BOOTENV_DEV_LEGACY_MMC(devtypeu, devtypel, instance) \
+	"bootcmd_" #devtypel #instance "=" \
+	"setenv devtype mmc; " \
+	"setenv mmcdev " #instance"; "\
+	"setenv bootpart " #instance":1 ; "\
+	"setenv rootfpart " #instance":2 ; "\
+	"run boot\0"
+
+#define BOOTENV_DEV_NAME_LEGACY_MMC(devtypeu, devtypel, instance) \
+	#devtypel #instance " "
+
+#define BOOT_TARGET_DEVICES(func) \
+	func(LEGACY_MMC, mmc, 1) \
+	func(LEGACY_MMC, mmc, 2) \
+
+#include <config_distro_bootcmd.h>
 
 #endif
