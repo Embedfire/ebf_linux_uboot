@@ -167,14 +167,14 @@
 			"fi; " \
 		"fi;\0" \
 	"loaduEnv=" \
-		"load ${devtype} ${bootpart} ${loadaddr} /uEnv.txt;\0" \
+		"fatload ${devtype} ${bootpart} ${loadaddr} /uEnv.txt;\0" \
 	"importbootenv=echo Importing environment from ${devtype} ...; " \
 		"env import -t ${loadaddr} ${filesize}\0" \
 	"args_mmc_old=setenv bootargs console=ttymxc1 " \
 		"root=/dev/mmcblk${mmcdev}p2 rw " \
 		"rootfstype=ext4 " \
 		"rootwait ${cmdline} ${flashtype}\0" \
-	"boot=mmc check;${devtype} dev ${mmcdev};mmc rescan; " \
+	"boot=${devtype} dev ${mmcdev};mmc rescan; " \
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
@@ -185,9 +185,9 @@
 			"fi;" \
 			"run args_mmc_old;" \
 			"echo loading vmlinuz-${uname_r} ...; "\
-			"load ${devtype} ${bootpart} 0x40480000 /kernel/vmlinuz-${uname_r};"\
+			"fatload ${devtype} ${bootpart} 0x40480000 /kernel/vmlinuz-${uname_r};"\
 			"echo loading ${dtb} ...; "\
-			"load ${devtype} ${rootfpart} 0x43000000 /usr/lib/linux-image-${uname_r}/${dtb};"\
+			"ext4load ${devtype} ${rootfpart} 0x43000000 /usr/lib/linux-image-${uname_r}/${dtb};"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
 			"booti 0x40480000 - 0x43000000;"	\
