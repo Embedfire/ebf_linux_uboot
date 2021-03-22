@@ -186,8 +186,8 @@
 			"run args_mmc_old;" \
 			"echo loading vmlinuz-${uname_r} ...; "\
 			"fatload ${devtype} ${bootpart} 0x40480000 /kernel/vmlinuz-${uname_r};"\
-			"echo loading ${dtb} ...; "\
-			"ext4load ${devtype} ${rootfpart} 0x43000000 /usr/lib/linux-image-${uname_r}/${dtb};"\
+			"echo loading ${mmc_dtb} ...; "\
+			"ext4load ${devtype} ${rootfpart} 0x43000000 /usr/lib/linux-image-${uname_r}/${mmc_dtb};"\
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
 			"booti 0x40480000 - 0x43000000;"	\
