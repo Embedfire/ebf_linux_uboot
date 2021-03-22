@@ -178,7 +178,7 @@
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
-			"setenv storage_media init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh;"  \	
+			"setenv storage_media init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh;"  \
 			"if test -n ${flash_firmware}; then "  \
 					"echo setting flash firmware...;"  \
 					"setenv flashtype ${storage_media};"  \
