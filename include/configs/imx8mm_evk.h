@@ -194,6 +194,7 @@
 			"echo debug: [bootz] ...  ;" \
 			"booti 0x40480000 - 0x43000000;"	\
 		"fi;\0" \
+	BOOTENV
 /*
 #define CONFIG_BOOTCOMMAND \
 	   "mmc dev ${mmcdev}; if mmc rescan; then " \
