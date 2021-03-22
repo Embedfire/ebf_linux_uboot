@@ -166,6 +166,10 @@
 				"echo WARN: Cannot load the DT; " \
 			"fi; " \
 		"fi;\0" \
+	"loaduEnv=" \
+		"load ${devtype} ${bootpart} ${loadaddr} /uEnv.txt;\0" \
+	"importbootenv=echo Importing environment from ${devtype} ...; " \
+		"env import -t ${loadaddr} ${filesize}\0" \
 	"args_mmc_old=setenv bootargs console=ttymxc1 " \
 		"root=/dev/mmcblk${mmcdev}p2 rw " \
 		"rootfstype=ext4 " \
