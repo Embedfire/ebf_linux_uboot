@@ -178,13 +178,7 @@
 		"echo loading [${devtype} ${bootpart}] /uEnv.txt ...; "\
 		"if run loaduEnv; then " \
 			"run importbootenv;" \
-			"if test ${second_flash} = emmc; then " \
-					"setenv dtb ${mmc_dtb};"  \
-					"setenv storage_media init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh;"  \
-				"else " \
-					"setenv dtb ${nand_dtb};"  \
-					"setenv storage_media init=/opt/scripts/tools/Nand/init-Nand-flasher-v1.sh;"  \
-				"fi; " \
+			"setenv storage_media init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh;"  \	
 			"if test -n ${flash_firmware}; then "  \
 					"echo setting flash firmware...;"  \
 					"setenv flashtype ${storage_media};"  \
