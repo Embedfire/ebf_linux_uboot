@@ -184,13 +184,13 @@
 					"setenv flashtype ${storage_media};"  \
 			"fi;" \
 			"run args_mmc_old;" \
-			"echo loading vmlinuz-${uname_r} ...; "\
-			"fatload ${devtype} ${bootpart} 0x40480000 /kernel/vmlinuz-${uname_r};"\
 			"echo loading ${mmc_dtb} ...; "\
 			"ext4load ${devtype} ${rootfpart} 0x43000000 /usr/lib/linux-image-${uname_r}/${mmc_dtb};"\
 			"dtfile 0x43000000 0x43200000  /uEnv.txt ${loadaddr};"   \
+			"echo loading vmlinuz-${uname_r} ...; "\
+			"fatload ${devtype} ${bootpart} 0x40480000 /kernel/vmlinuz-${uname_r};"\
 			"echo debug: [${bootargs}] ... ;" \
-			"echo debug: [bootz] ...  ;" \
+			"echo debug: [booti] ...  ;" \
 			"booti 0x40480000 - 0x43000000;"	\
 		"fi;\0" \
 	BOOTENV
