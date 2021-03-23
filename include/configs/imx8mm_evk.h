@@ -188,6 +188,7 @@
 			"fatload ${devtype} ${bootpart} 0x40480000 /kernel/vmlinuz-${uname_r};"\
 			"echo loading ${mmc_dtb} ...; "\
 			"ext4load ${devtype} ${rootfpart} 0x43000000 /usr/lib/linux-image-${uname_r}/${mmc_dtb};"\
+			"dtfile 0x43000000 0x43200000  /uEnv.txt ${loadaddr};"   \
 			"echo debug: [${bootargs}] ... ;" \
 			"echo debug: [bootz] ...  ;" \
 			"booti 0x40480000 - 0x43000000;"	\
@@ -205,7 +206,6 @@
 			   "fi; " \
 		   "fi; " \
 	   "fi;"
-	   "dtfile 0x83000000 0x87000000  /uEnv.txt ${loadaddr};"   \
 */
 #endif
 
