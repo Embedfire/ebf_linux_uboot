@@ -891,9 +891,6 @@ The following options need to be configured:
 		CONFIG_EFI_PARTITION   GPT partition table, common when EFI is the
 				       bootloader.  Note 2TB partition limit; see
 				       disk/part_efi.c
-		CONFIG_MTD_PARTITIONS  Memory Technology Device partition table.
-
-		If IDE or SCSI support is enabled (CONFIG_IDE or
 		CONFIG_SCSI) you must configure support for at
 		least one non-MTD partition type as well.
 
@@ -1241,6 +1238,74 @@ The following options need to be configured:
 		Poll timeout [ms], which the device sends to the host when
 		entering dfuMANIFEST state. Host waits this timeout, before
 		sending again an USB request to the device.
+
+- Android Bootloader support:
+		CONFIG_CMD_BOOT_ANDROID
+		This enables the command "boot_android" which executes the
+		Android Bootloader flow. Enabling CONFIG_CMD_FASTBOOT is
+		recommended to support the Android Fastboot protocol as part
+		of the bootloader.
+
+		CONFIG_ANDROID_BOOTLOADER
+		This enables support for the Android bootloader flow. Android
+		devices can boot in normal mode, recovery mode or bootloader
+		mode. The normal mode is the most common boot mode, but
+		recovery mode is often used to perform factory reset and OTA
+		(over-the-air) updates in the legacy updater. Also it is
+		possible for an Android system to request a reboot to the
+		"bootloader", which often means reboot to fastboot but may also
+		include a UI with a menu.
+
+		CONFIG_ANDROID_BOOT_IMAGE
+		This enables support for booting images which use the Android
+		image format header.
+
+- USB Device Android Fastboot support:
+		CONFIG_USB_FUNCTION_FASTBOOT
+		This enables the USB part of the fastboot gadget
+
+		CONFIG_CMD_FASTBOOT
+		This enables the command "fastboot" which enables the Android
+		fastboot mode for the platform's USB device. Fastboot is a USB
+		protocol for downloading images, flashing and device control
+		used on Android devices.
+		See doc/README.android-fastboot for more information.
+
+		CONFIG_FASTBOOT_BUF_ADDR
+		The fastboot protocol requires a large memory buffer for
+		downloads. Define this to the starting RAM address to use for
+		downloaded images.
+
+		CONFIG_FASTBOOT_BUF_SIZE
+		The fastboot protocol requires a large memory buffer for
+		downloads. This buffer should be as large as possible for a
+		platform. Define this to the size available RAM for fastboot.
+
+		CONFIG_FASTBOOT_FLASH
+		The fastboot protocol includes a "flash" command for writing
+		the downloaded image to a non-volatile storage device. Define
+		this to enable the "fastboot flash" command.
+
+		CONFIG_FASTBOOT_FLASH_MMC_DEV
+		The fastboot "flash" command requires additional information
+		regarding the non-volatile storage device. Define this to
+		the eMMC device that fastboot should use to store the image.
+
+		CONFIG_FASTBOOT_GPT_NAME
+		The fastboot "flash" command supports writing the downloaded
+		image to the Protective MBR and the Primary GUID Partition
+		Table. (Additionally, this downloaded image is post-processed
+		to generate and write the Backup GUID Partition Table.)
+		This occurs when the specified "partition name" on the
+		"fastboot flash" command line matches this value.
+		The default is "gpt" if undefined.
+
+		CONFIG_FASTBOOT_MBR_NAME
+		The fastboot "flash" command supports writing the downloaded
+		image to DOS MBR.
+		This occurs when the "partition name" specified on the
+		"fastboot flash" command line matches this value.
+		If not defined the default value "mbr" is used.
 
 - Journaling Flash filesystem support:
 		CONFIG_JFFS2_NAND
@@ -1604,6 +1669,15 @@ The following options need to be configured:
 		to exist in all environments that the device must operate.
 
 		See doc/README.link-local for more information.
+
+ - MAC address from environment variables
+
+		FDT_SEQ_MACADDR_FROM_ENV
+
+		Fix-up device tree with MAC addresses fetched sequentially from
+		environment variables. This config work on assumption that
+		non-usable ethernet node of device-tree are either not present
+		or their status has been marked as "disabled".
 
  - CDP Options:
 		CONFIG_CDP_DEVICE_ID
@@ -1993,11 +2067,6 @@ The following options need to be configured:
 		SPI EEPROM, also an instance works with Crystal A/D and
 		D/As on the SACSng board)
 
-		CONFIG_SH_SPI
-
-		Enables the driver for SPI controller on SuperH. Currently
-		only SH7757 is supported.
-
 		CONFIG_SOFT_SPI
 
 		Enables a software (bit-bang) SPI driver rather than
@@ -2170,16 +2239,6 @@ The following options need to be configured:
 		currently only supports clearing the memory.
 
 - Error Recovery:
-		CONFIG_PANIC_HANG
-
-		Define this variable to stop the system in case of a
-		fatal error, so that you have to reset it manually.
-		This is probably NOT a good idea for an embedded
-		system where you want the system to reboot
-		automatically as fast as possible, but it may be
-		useful during development since you can try to debug
-		the conditions that lead to the situation.
-
 		CONFIG_NET_RETRY_COUNT
 
 		This variable defines the number of retries for
@@ -2299,40 +2358,6 @@ The following options need to be configured:
 		this is instead controlled by the value of
 		/config/load-environment.
 
-- DataFlash Support:
-		CONFIG_HAS_DATAFLASH
-
-		Defining this option enables DataFlash features and
-		allows to read/write in Dataflash via the standard
-		commands cp, md...
-
-- Serial Flash support
-		Usage requires an initial 'sf probe' to define the serial
-		flash parameters, followed by read/write/erase/update
-		commands.
-
-		The following defaults may be provided by the platform
-		to handle the common case when only a single serial
-		flash is present on the system.
-
-		CONFIG_SF_DEFAULT_BUS		Bus identifier
-		CONFIG_SF_DEFAULT_CS		Chip-select
-		CONFIG_SF_DEFAULT_MODE 		(see include/spi.h)
-		CONFIG_SF_DEFAULT_SPEED		in Hz
-
-		CONFIG_SYSTEMACE
-
-		Adding this option adds support for Xilinx SystemACE
-		chips attached via some sort of local bus. The address
-		of the chip must also be defined in the
-		CONFIG_SYS_SYSTEMACE_BASE macro. For example:
-
-		#define CONFIG_SYSTEMACE
-		#define CONFIG_SYS_SYSTEMACE_BASE 0xf0000000
-
-		When SystemACE support is added, the "ace" device type
-		becomes available to the fat commands, i.e. fatls.
-
 - TFTP Fixed UDP Port:
 		CONFIG_TFTP_PORT
 
@@ -2371,6 +2396,13 @@ The following options need to be configured:
 			CONFIG_SYS_BOOTCOUNT_ADDR = i2c addr which is used for
 						    the bootcounter.
 			CONFIG_BOOTCOUNT_ALEN = address len
+		CONFIG_BOOTCOUNT_EXT
+		enable support for the bootcounter in EXT filesystem
+			CONFIG_SYS_BOOTCOUNT_ADDR = RAM address used for read
+                                                    and write.
+			CONFIG_SYS_BOOTCOUNT_EXT_INTERFACE = interface
+			CONFIG_SYS_BOOTCOUNT_EXT_DEVPART = device and part
+			CONFIG_SYS_BOOTCOUNT_EXT_NAME = filename
 
 - Show boot progress:
 		CONFIG_SHOW_BOOT_PROGRESS
@@ -2580,23 +2612,6 @@ FIT uImage format:
 		for a more detailed description refer to doc/README.update.
 
 - MTD Support (mtdparts command, UBI support)
-		CONFIG_MTD_DEVICE
-
-		Adds the MTD device infrastructure from the Linux kernel.
-		Needed for mtdparts command support.
-
-		CONFIG_MTD_PARTITIONS
-
-		Adds the MTD partitioning infrastructure from the Linux
-		kernel. Needed for UBI support.
-
-- UBI support
-		CONFIG_UBI_SILENCE_MSG
-
-		Make the verbose messages from UBI stop printing.  This leaves
-		warnings and errors enabled.
-
-
 		CONFIG_MTD_UBI_WL_THRESHOLD
 		This parameter defines the maximum difference between the highest
 		erase counter value and the lowest erase counter value of eraseblocks
@@ -2788,6 +2803,10 @@ FIT uImage format:
 
 		CONFIG_SPL_NAND_DRIVERS
 		SPL uses normal NAND drivers, not minimal drivers.
+
+		CONFIG_SPL_NAND_IDENT
+		SPL uses the chip ID list to identify the NAND flash.
+		Requires CONFIG_SPL_NAND_BASE.
 
 		CONFIG_SPL_NAND_ECC
 		Include standard software ECC in the SPL
@@ -3441,8 +3460,8 @@ Low Level (hardware related) configuration options:
 		a 16 bit bus.
 		Not all NAND drivers use this symbol.
 		Example of drivers that use it:
-		- drivers/mtd/nand/ndfc.c
-		- drivers/mtd/nand/mxc_nand.c
+		- drivers/mtd/nand/raw/ndfc.c
+		- drivers/mtd/nand/raw/mxc_nand.c
 
 - CONFIG_SYS_NDFC_EBC0_CFG
 		Sets the EBC0_CFG register for the NDFC. If not defined
@@ -3562,7 +3581,7 @@ Low Level (hardware related) configuration options:
 - CONFIG_SYS_NAND_NO_SUBPAGE_WRITE
 		Option to disable subpage write in NAND driver
 		driver that uses this:
-		drivers/mtd/nand/davinci_nand.c
+		drivers/mtd/nand/raw/davinci_nand.c
 
 Freescale QE/FMAN Firmware Support:
 -----------------------------------
@@ -5128,8 +5147,9 @@ Coding Standards:
 -----------------
 
 All contributions to U-Boot should conform to the Linux kernel
-coding style; see the file "Documentation/CodingStyle" and the script
-"scripts/Lindent" in your Linux kernel source directory.
+coding style; see the kernel coding style guide at
+https://www.kernel.org/doc/html/latest/process/coding-style.html, and the
+script "scripts/Lindent" in your Linux kernel source directory.
 
 Source files originating from a different project (for example the
 MTD subsystem) are generally exempt from these guidelines and are not
@@ -5161,7 +5181,7 @@ may be rejected, even when they contain important and valuable stuff.
 Please see http://www.denx.de/wiki/U-Boot/Patches for details.
 
 Patches shall be sent to the u-boot mailing list <u-boot@lists.denx.de>;
-see http://lists.denx.de/mailman/listinfo/u-boot
+see https://lists.denx.de/listinfo/u-boot
 
 When you send a patch, please include the following information with
 it:

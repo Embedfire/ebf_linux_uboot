@@ -10,8 +10,8 @@
 #include <linux/types.h>
 
 static u16 LZ4_readLE16(const void *src) { return le16_to_cpu(*(u16 *)src); }
-static void LZ4_copy4(void *dst, const void *src) { *(u32 *)dst = *(u32 *)src; }
-static void LZ4_copy8(void *dst, const void *src) { *(u64 *)dst = *(u64 *)src; }
+static void LZ4_copy4(void *dst, const void *src) { memcpy(dst, src, 4); }
+static void LZ4_copy8(void *dst, const void *src) { memcpy(dst, src, 8); }
 
 typedef  uint8_t BYTE;
 typedef uint16_t U16;
@@ -62,6 +62,20 @@ struct lz4_block_header {
 	/* + size bytes of data */
 	/* + u32 block_checksum iff has_block_checksum is set */
 } __packed;
+
+bool lz4_is_valid_header(const unsigned char *h)
+{
+	const struct lz4_frame_header *hdr  = (const struct lz4_frame_header *)h;
+	/* We assume there's always only a single, standard frame. */
+	if (le32_to_cpu(hdr->magic) != LZ4F_MAGIC || hdr->version != 1)
+		return false;        /* unknown format */
+	if (hdr->reserved0 || hdr->reserved1 || hdr->reserved2)
+		return false; /* reserved must be zero */
+	if (!hdr->independent_blocks)
+		return false; /* we can't support this yet */
+
+	return true;
+}
 
 int ulz4fn(const void *src, size_t srcn, void *dst, size_t *dstn)
 {

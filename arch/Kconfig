@@ -54,6 +54,10 @@ config PPC
 	select HAVE_PRIVATE_LIBGCC
 	select SUPPORT_OF_CONTROL
 
+config RISCV
+	bool "riscv architecture"
+	select SUPPORT_OF_CONTROL
+
 config SANDBOX
 	bool "Sandbox"
 	select BOARD_LATE_INIT
@@ -66,6 +70,8 @@ config SANDBOX
 	select DM_SPI
 	select DM_GPIO
 	select DM_MMC
+	select HAVE_BLOCK_DEVICE
+	select SPI
 	select LZO
 	imply CMD_GETTIME
 	imply CMD_HASH

@@ -30,6 +30,20 @@ int sysreset_walk(enum sysreset_t type)
 	struct udevice *dev;
 	int ret = -ENOSYS;
 
+	/*
+	 * Use psci sysreset as primary for rockchip platforms,
+	 * "rockchip_reset" is applied if PSCI is disabled.
+	 */
+#if !defined(CONFIG_SPL_BUILD) && \
+     defined(CONFIG_ARCH_ROCKCHIP) && defined(CONFIG_SYSRESET_PSCI)
+	ret = uclass_get_device_by_driver(UCLASS_SYSRESET,
+					  DM_GET_DRIVER(psci_sysreset), &dev);
+	if (!ret)
+		sysreset_request(dev, type);
+	else
+		printf("WARN: PSCI sysreset is disabled\n");
+#endif
+
 	while (ret != -EINPROGRESS && type < SYSRESET_COUNT) {
 		for (uclass_first_device(UCLASS_SYSRESET, &dev);
 		     dev;
@@ -67,10 +81,36 @@ void reset_cpu(ulong addr)
 	sysreset_walk_halt(SYSRESET_WARM);
 }
 
+void reboot(const char *mode)
+{
+#ifndef CONFIG_SPL_BUILD
+	struct sysreset_ops *ops;
+	struct udevice *dev;
+	int ret;
+
+	if (!mode)
+		goto finish;
+
+	ret = uclass_get_device_by_driver(UCLASS_SYSRESET,
+					  DM_GET_DRIVER(sysreset_syscon_reboot),
+					  &dev);
+	if (!ret) {
+		ops = sysreset_get_ops(dev);
+		if (ops && ops->request_by_mode)
+			ops->request_by_mode(dev, mode);
+	}
+finish:
+#endif
+	flushc();
+	sysreset_walk_halt(SYSRESET_COLD);
+}
 
 int do_reset(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
-	sysreset_walk_halt(SYSRESET_WARM);
+	if (argc > 1)
+		reboot(argv[1]);
+	else
+		reboot(NULL);
 
 	return 0;
 }

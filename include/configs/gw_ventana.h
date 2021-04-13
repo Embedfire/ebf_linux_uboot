@@ -67,16 +67,12 @@
 #elif defined(CONFIG_SPL_NAND_SUPPORT)
 /* Enable NAND support */
 #ifdef CONFIG_CMD_NAND
-  #define CONFIG_NAND_MXS
   #define CONFIG_SYS_MAX_NAND_DEVICE	1
   #define CONFIG_SYS_NAND_BASE		0x40000000
   #define CONFIG_SYS_NAND_5_ADDR_CYCLE
   #define CONFIG_SYS_NAND_ONFI_DETECTION
 
   /* DMA stuff, needed for GPMI/MXS NAND support */
-  #define CONFIG_APBH_DMA
-  #define CONFIG_APBH_DMA_BURST
-  #define CONFIG_APBH_DMA_BURST8
 #endif
 
 #endif /* CONFIG_SPI_FLASH */
@@ -146,8 +142,6 @@
 #define CONFIG_MXC_USB_PORTSC     (PORT_PTS_UTMI | PORT_PTS_PTW)
 #define CONFIG_MXC_USB_FLAGS      0
 #define CONFIG_USBD_HS
-#define CONFIG_USB_ETHER
-#define CONFIG_USB_ETH_CDC
 #define CONFIG_NETCONSOLE
 
 /* USB Mass Storage Gadget */
@@ -187,16 +181,6 @@
 /*
  * MTD Command for mtdparts
  */
-#define CONFIG_MTD_DEVICE
-#define CONFIG_MTD_PARTITIONS
-#ifdef CONFIG_SPI_FLASH
-#define MTDIDS_DEFAULT    "nor0=nor"
-#define MTDPARTS_DEFAULT  \
-	"mtdparts=nor:512k(uboot),64k(env),2m(kernel),-(rootfs)"
-#else
-#define MTDIDS_DEFAULT    "nand0=nand"
-#define MTDPARTS_DEFAULT  "mtdparts=nand:16m(uboot),1m(env),-(rootfs)"
-#endif
 
 /* Persistent Environment Config */
 #if defined(CONFIG_ENV_IS_IN_MMC)

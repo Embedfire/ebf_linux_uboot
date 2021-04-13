@@ -32,9 +32,51 @@ int dm_mmc_send_cmd(struct udevice *dev, struct mmc_cmd *cmd,
 	return ret;
 }
 
+#ifdef CONFIG_SPL_BLK_READ_PREPARE
+int dm_mmc_send_cmd_prepare(struct udevice *dev, struct mmc_cmd *cmd,
+			    struct mmc_data *data)
+{
+	struct mmc *mmc = mmc_get_mmc_dev(dev);
+	struct dm_mmc_ops *ops = mmc_get_ops(dev);
+	int ret;
+
+	mmmc_trace_before_send(mmc, cmd);
+	if (ops->send_cmd_prepare)
+		ret = ops->send_cmd_prepare(dev, cmd, data);
+	else
+		ret = -ENOSYS;
+	mmmc_trace_after_send(mmc, cmd, ret);
+
+	return ret;
+}
+#endif
+
 int mmc_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd, struct mmc_data *data)
 {
 	return dm_mmc_send_cmd(mmc->dev, cmd, data);
+}
+
+#ifdef CONFIG_SPL_BLK_READ_PREPARE
+int mmc_send_cmd_prepare(struct mmc *mmc, struct mmc_cmd *cmd, struct mmc_data *data)
+{
+	return dm_mmc_send_cmd_prepare(mmc->dev, cmd, data);
+}
+#endif
+
+bool mmc_card_busy(struct mmc *mmc)
+{
+	struct dm_mmc_ops *ops = mmc_get_ops(mmc->dev);
+
+	if (!ops->card_busy)
+		return -ENOSYS;
+	return ops->card_busy(mmc->dev);
+}
+
+bool mmc_can_card_busy(struct mmc *mmc)
+{
+	struct dm_mmc_ops *ops = mmc_get_ops(mmc->dev);
+
+	return !!ops->card_busy;
 }
 
 int dm_mmc_set_ios(struct udevice *dev)
@@ -198,11 +240,9 @@ int mmc_bind(struct udevice *dev, struct mmc *mmc, const struct mmc_config *cfg)
 
 	if (!mmc_get_ops(dev))
 		return -ENOSYS;
-#ifndef CONFIG_SPL_BUILD
 	/* Use the fixed index with aliase node's index */
 	ret = dev_read_alias_seq(dev, &devnum);
 	debug("%s: alias ret=%d, devnum=%d\n", __func__, ret, devnum);
-#endif
 
 	ret = blk_create_devicef(dev, "mmc_blk", "blk", IF_TYPE_MMC,
 			devnum, 512, 0, &bdev);

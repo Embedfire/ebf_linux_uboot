@@ -52,12 +52,14 @@
 	defined(CONFIG_MMC) || \
 	defined(CONFIG_NVME) || \
 	defined(CONFIG_SYSTEMACE) || \
-	defined(CONFIG_SANDBOX)
+	defined(CONFIG_SANDBOX)   || \
+	defined(CONFIG_RKFLASH)
 #define HAVE_BLOCK_DEVICE
 #endif
 
 #if (CONFIG_IS_ENABLED(PARTITION_UUIDS) || \
 	CONFIG_IS_ENABLED(EFI_PARTITION) || \
+	CONFIG_IS_ENABLED(EFI_LOADER) || \
 	defined(CONFIG_RANDOM_UUID) || \
 	defined(CONFIG_CMD_UUID) || \
 	defined(CONFIG_BOOTP_PXE)) && \

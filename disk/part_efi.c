@@ -80,10 +80,11 @@ static int validate_gpt_header(gpt_header *gpt_h, lbaint_t lba,
 
 	/* Check the GPT header signature */
 	if (le64_to_cpu(gpt_h->signature) != GPT_HEADER_SIGNATURE) {
-		printf("%s signature is wrong: 0x%llX != 0x%llX\n",
-		       "GUID Partition Table Header",
-		       le64_to_cpu(gpt_h->signature),
-		       GPT_HEADER_SIGNATURE);
+		if (le64_to_cpu(gpt_h->signature) != 0)
+			printf("%s signature is wrong: 0x%llX != 0x%llX\n",
+			       "GUID Partition Table Header",
+			       le64_to_cpu(gpt_h->signature),
+			       GPT_HEADER_SIGNATURE);
 		return -1;
 	}
 
@@ -269,8 +270,21 @@ void part_print_efi(struct blk_desc *dev_desc)
 int part_get_info_efi(struct blk_desc *dev_desc, int part,
 		      disk_partition_t *info)
 {
-	ALLOC_CACHE_ALIGN_BUFFER_PAD(gpt_header, gpt_head, 1, dev_desc->blksz);
-	gpt_entry *gpt_pte = NULL;
+	static gpt_entry *gpt_pte = NULL;
+	static gpt_header *gpt_head = NULL;
+
+	if (!gpt_head)
+		gpt_head = memalign(ARCH_DMA_MINALIGN, dev_desc->blksz);
+
+	/*
+	 * We suppose different dev have different size, eg. emmc vs sd
+	 * free the pte first if exist and then will malloc and init a new one.
+	 */
+	if (gpt_head && (gpt_head->last_usable_lba + 0x22) != dev_desc->lba) {
+		if (gpt_pte)
+			free(gpt_pte);
+		gpt_pte = NULL;
+	}
 
 	/* "part" argument must be at least 1 */
 	if (part < 1) {
@@ -297,7 +311,6 @@ int part_get_info_efi(struct blk_desc *dev_desc, int part,
 	    !is_pte_valid(&gpt_pte[part - 1])) {
 		debug("%s: *** ERROR: Invalid partition number %d ***\n",
 			__func__, part);
-		free(gpt_pte);
 		return -1;
 	}
 
@@ -324,21 +337,145 @@ int part_get_info_efi(struct blk_desc *dev_desc, int part,
 	debug("%s: start 0x" LBAF ", size 0x" LBAF ", name %s\n", __func__,
 	      info->start, info->size, info->name);
 
-	/* Remember to free pte */
-	free(gpt_pte);
 	return 0;
 }
+
+#ifdef CONFIG_RKIMG_BOOTLOADER
+static void gpt_entry_modify(struct blk_desc *dev_desc,
+			     gpt_entry *gpt_pte,
+			     gpt_header *gpt_head)
+{
+	int i;
+	uint32_t calc_crc32;
+
+	for (i = 0; i < gpt_head->num_partition_entries; i++) {
+		if (!is_pte_valid(&gpt_pte[i]))
+			break;
+	}
+
+	if (gpt_pte[i - 1].ending_lba <= (dev_desc->lba - 0x22))
+		return;
+
+	gpt_pte[i - 1].ending_lba = dev_desc->lba - 0x22;
+	calc_crc32 = efi_crc32((const unsigned char *)gpt_pte,
+			       le32_to_cpu(gpt_head->num_partition_entries) *
+			       le32_to_cpu(gpt_head->sizeof_partition_entry));
+	gpt_head->partition_entry_array_crc32 = calc_crc32;
+}
+
+static int part_efi_repair(struct blk_desc *dev_desc, gpt_entry *gpt_pte,
+			   gpt_header *gpt_head, int head_gpt_valid,
+			   int backup_gpt_valid)
+{
+	uint32_t calc_crc32;
+	size_t count = 0, blk_cnt;
+	lbaint_t blk;
+
+	if (head_gpt_valid == 1 && backup_gpt_valid == 1) {
+		return 0;
+	} else if (head_gpt_valid == 0 && backup_gpt_valid == 0) {
+		return -1;
+	} else if (head_gpt_valid == 1 && backup_gpt_valid == 0) {
+		gpt_head->header_crc32 = 0;
+		gpt_head->my_lba = dev_desc->lba - 1;
+		gpt_head->alternate_lba = 1;
+		gpt_head->partition_entry_lba = dev_desc->lba - 0x21;
+		gpt_entry_modify(dev_desc, gpt_pte, gpt_head);
+		calc_crc32 = efi_crc32((const unsigned char *)gpt_head,
+				       le32_to_cpu(gpt_head->header_size));
+		gpt_head->header_crc32 = calc_crc32;
+		if (blk_dwrite(dev_desc, dev_desc->lba - 1, 1, gpt_head) != 1) {
+			printf("*** ERROR: Can't write GPT header ***\n");
+			return -1;
+		}
+		count = le32_to_cpu(gpt_head->num_partition_entries) *
+			le32_to_cpu(gpt_head->sizeof_partition_entry);
+		blk = le64_to_cpu(gpt_head->partition_entry_lba);
+		blk_cnt = BLOCK_CNT(count, dev_desc);
+		if (blk_dwrite(dev_desc, blk, (lbaint_t)blk_cnt, gpt_pte) !=
+		    blk_cnt) {
+			printf("*** ERROR: Can't write entry partitions ***\n");
+			return -1;
+		}
+		printf("Repair the backup gpt table OK!\n");
+	} else if (head_gpt_valid == 0 && backup_gpt_valid == 1) {
+		gpt_head->header_crc32 = 0;
+		gpt_head->my_lba = 1;
+		gpt_head->alternate_lba = dev_desc->lba - 1;
+		gpt_head->partition_entry_lba = 0x22;
+		gpt_entry_modify(dev_desc, gpt_pte, gpt_head);
+		calc_crc32 = efi_crc32((const unsigned char *)gpt_head,
+				       le32_to_cpu(gpt_head->header_size));
+		gpt_head->header_crc32 = calc_crc32;
+		if (blk_dwrite(dev_desc, 1, 1, gpt_head) != 1) {
+			printf("*** ERROR: Can't write GPT header ***\n");
+			return -1;
+		}
+		count = le32_to_cpu(gpt_head->num_partition_entries) *
+			le32_to_cpu(gpt_head->sizeof_partition_entry);
+		blk = le64_to_cpu(gpt_head->partition_entry_lba);
+		blk_cnt = BLOCK_CNT(count, dev_desc);
+		if (blk_dwrite(dev_desc, blk, (lbaint_t)blk_cnt, gpt_pte) !=
+		    blk_cnt) {
+			printf("*** ERROR: Can't write entry partitions ***\n");
+			return -1;
+		}
+		printf("Repair the Primary gpt table OK!\n");
+	}
+
+	return 0;
+}
+#endif
 
 static int part_test_efi(struct blk_desc *dev_desc)
 {
 	ALLOC_CACHE_ALIGN_BUFFER_PAD(legacy_mbr, legacymbr, 1, dev_desc->blksz);
+	int ret = 0;
 
 	/* Read legacy MBR from block 0 and validate it */
 	if ((blk_dread(dev_desc, 0, 1, (ulong *)legacymbr) != 1)
 		|| (is_pmbr_valid(legacymbr) != 1)) {
 		return -1;
 	}
-	return 0;
+#ifdef CONFIG_RKIMG_BOOTLOADER
+	gpt_entry *h_gpt_pte = NULL;
+	gpt_header *h_gpt_head = NULL;
+	gpt_entry *b_gpt_pte = NULL;
+	gpt_header *b_gpt_head = NULL;
+	int head_gpt_valid = 0;
+	int backup_gpt_valid = 0;
+
+	if (!h_gpt_head)
+		h_gpt_head = memalign(ARCH_DMA_MINALIGN, dev_desc->blksz);
+	if (!b_gpt_head)
+		b_gpt_head = memalign(ARCH_DMA_MINALIGN, dev_desc->blksz);
+
+	head_gpt_valid = is_gpt_valid(dev_desc, GPT_PRIMARY_PARTITION_TABLE_LBA,
+				      h_gpt_head, &h_gpt_pte);
+	backup_gpt_valid = is_gpt_valid(dev_desc, (dev_desc->lba - 1),
+					b_gpt_head, &b_gpt_pte);
+	if (head_gpt_valid == 1 && backup_gpt_valid == 0) {
+		if (part_efi_repair(dev_desc, h_gpt_pte, h_gpt_head,
+				    head_gpt_valid, backup_gpt_valid))
+			printf("Backup GPT repair fail!\n");
+	} else if (head_gpt_valid == 0 && backup_gpt_valid == 1) {
+		if (part_efi_repair(dev_desc, b_gpt_pte, b_gpt_head,
+				    head_gpt_valid, backup_gpt_valid))
+			printf("Primary GPT repair fail!\n");
+	} else if (head_gpt_valid == 0 && backup_gpt_valid == 0) {
+		ret = -1;
+	}
+
+	free(h_gpt_pte);
+	h_gpt_pte = NULL;
+	free(h_gpt_head);
+	h_gpt_head = NULL;
+	free(b_gpt_pte);
+	b_gpt_pte = NULL;
+	free(b_gpt_head);
+	b_gpt_head = NULL;
+#endif
+	return ret;
 }
 
 /**
@@ -360,7 +497,7 @@ static int set_protective_mbr(struct blk_desc *dev_desc)
 
 	/* Read MBR to backup boot code if it exists */
 	if (blk_dread(dev_desc, 0, 1, p_mbr) != 1) {
-		error("** Can't read from device %d **\n", dev_desc->devnum);
+		pr_err("** Can't read from device %d **\n", dev_desc->devnum);
 		return -1;
 	}
 
@@ -469,8 +606,8 @@ int gpt_fill_pte(struct blk_desc *dev_desc,
 		 * If our partition overlaps with either the GPT
 		 * header, or the partition entry, reject it.
 		 */
-		if (((start <= hdr_end && hdr_start <= (start + size)) ||
-		     (start <= pte_end && pte_start <= (start + size)))) {
+		if (((start < hdr_end && hdr_start < (start + size)) ||
+		     (start < pte_end && pte_start < (start + size)))) {
 			printf("Partition overlap\n");
 			return -1;
 		}
@@ -622,25 +759,27 @@ int gpt_fill_header(struct blk_desc *dev_desc, gpt_header *gpt_h,
 int gpt_restore(struct blk_desc *dev_desc, char *str_disk_guid,
 		disk_partition_t *partitions, int parts_count)
 {
-	int ret;
-
-	gpt_header *gpt_h = calloc(1, PAD_TO_BLOCKSIZE(sizeof(gpt_header),
-						       dev_desc));
+	gpt_header *gpt_h;
 	gpt_entry *gpt_e;
+	int ret, size;
 
+	size = PAD_TO_BLOCKSIZE(sizeof(gpt_header), dev_desc);
+	gpt_h = malloc_cache_aligned(size);
 	if (gpt_h == NULL) {
 		printf("%s: calloc failed!\n", __func__);
 		return -1;
 	}
+	memset(gpt_h, 0, size);
 
-	gpt_e = calloc(1, PAD_TO_BLOCKSIZE(GPT_ENTRY_NUMBERS
-					       * sizeof(gpt_entry),
-					       dev_desc));
+	size = PAD_TO_BLOCKSIZE(GPT_ENTRY_NUMBERS * sizeof(gpt_entry),
+				dev_desc);
+	gpt_e = malloc_cache_aligned(size);
 	if (gpt_e == NULL) {
 		printf("%s: calloc failed!\n", __func__);
 		free(gpt_h);
 		return -1;
 	}
+	memset(gpt_e, 0, size);
 
 	/* Generate Primary GPT header (LBA1) */
 	ret = gpt_fill_header(dev_desc, gpt_h, str_disk_guid, parts_count);
@@ -716,7 +855,7 @@ int gpt_verify_partitions(struct blk_desc *dev_desc,
 
 	for (i = 0; i < parts; i++) {
 		if (i == gpt_head->num_partition_entries) {
-			error("More partitions than allowed!\n");
+			pr_err("More partitions than allowed!\n");
 			return -1;
 		}
 
@@ -729,7 +868,7 @@ int gpt_verify_partitions(struct blk_desc *dev_desc,
 
 		if (strncmp(efi_str, (char *)partitions[i].name,
 			    sizeof(partitions->name))) {
-			error("Partition name: %s does not match %s!\n",
+			pr_err("Partition name: %s does not match %s!\n",
 			      efi_str, (char *)partitions[i].name);
 			return -1;
 		}
@@ -746,7 +885,7 @@ int gpt_verify_partitions(struct blk_desc *dev_desc,
 			if ((i == parts - 1) && (partitions[i].size == 0))
 				continue;
 
-			error("Partition %s size: %llu does not match %llu!\n",
+			pr_err("Partition %s size: %llu does not match %llu!\n",
 			      efi_str, (unsigned long long)gpt_part_size,
 			      (unsigned long long)partitions[i].size);
 			return -1;
@@ -767,7 +906,7 @@ int gpt_verify_partitions(struct blk_desc *dev_desc,
 		      (unsigned long long)partitions[i].start);
 
 		if (le64_to_cpu(gpt_e[i].starting_lba) != partitions[i].start) {
-			error("Partition %s start: %llu does not match %llu!\n",
+			pr_err("Partition %s start: %llu does not match %llu!\n",
 			      efi_str, le64_to_cpu(gpt_e[i].starting_lba),
 			      (unsigned long long)partitions[i].start);
 			return -1;
@@ -785,6 +924,14 @@ int is_valid_gpt_buf(struct blk_desc *dev_desc, void *buf)
 	/* determine start of GPT Header in the buffer */
 	gpt_h = buf + (GPT_PRIMARY_PARTITION_TABLE_LBA *
 		       dev_desc->blksz);
+
+	if ((le64_to_cpu(gpt_h->alternate_lba) + 1)
+			!= cpu_to_le64(dev_desc->lba)) {
+		printf("%s: failed checking '%s'\n", __func__,
+		       "invalid GPT Disk Size");
+		return -1;
+	}
+
 	if (validate_gpt_header(gpt_h, GPT_PRIMARY_PARTITION_TABLE_LBA,
 				dev_desc->lba))
 		return -1;
@@ -902,6 +1049,17 @@ static int is_pmbr_valid(legacy_mbr * mbr)
 	if (!mbr || le16_to_cpu(mbr->signature) != MSDOS_MBR_SIGNATURE)
 		return 0;
 
+#ifdef CONFIG_ARCH_ROCKCHIP
+	/*
+	 * In sd-update card, we use RKPARM partition in bootloader to load
+	 * firmware, and use MS-DOS partition in recovery to update system.
+	 * Now, we want to use gpt in bootloader and abandon the RKPARM
+	 * partition. So in new sd-update card, we write the MS-DOS partition
+	 * table and gpt to sd card. Then we must return 1 directly when test
+	 * the mbr sector otherwise the gpt is unavailable.
+	 */
+	return 1;
+#endif
 	for (i = 0; i < 4; i++) {
 		if (pmbr_part_valid(&mbr->partition_record[i])) {
 			return 1;
@@ -923,8 +1081,21 @@ static int is_pmbr_valid(legacy_mbr * mbr)
 static int is_gpt_valid(struct blk_desc *dev_desc, u64 lba,
 			gpt_header *pgpt_head, gpt_entry **pgpt_pte)
 {
+	/* Confirm valid arguments prior to allocation. */
 	if (!dev_desc || !pgpt_head) {
 		printf("%s: Invalid Argument(s)\n", __func__);
+		return 0;
+	}
+
+	/* Re-use pte if it's not NULL */
+	if (*pgpt_pte)
+		return 1;
+
+	ALLOC_CACHE_ALIGN_BUFFER(legacy_mbr, mbr, dev_desc->blksz);
+
+	/* Read MBR Header from device */
+	if (blk_dread(dev_desc, 0, 1, (ulong *)mbr) != 1) {
+		printf("*** ERROR: Can't read MBR header ***\n");
 		return 0;
 	}
 
@@ -937,6 +1108,18 @@ static int is_gpt_valid(struct blk_desc *dev_desc, u64 lba,
 	if (validate_gpt_header(pgpt_head, (lbaint_t)lba, dev_desc->lba))
 		return 0;
 
+	if (dev_desc->sig_type == SIG_TYPE_NONE) {
+		efi_guid_t empty = {};
+		if (memcmp(&pgpt_head->disk_guid, &empty, sizeof(empty))) {
+			dev_desc->sig_type = SIG_TYPE_GUID;
+			memcpy(&dev_desc->guid_sig, &pgpt_head->disk_guid,
+			      sizeof(empty));
+		} else if (mbr->unique_mbr_signature != 0) {
+			dev_desc->sig_type = SIG_TYPE_MBR;
+			dev_desc->mbr_sig = mbr->unique_mbr_signature;
+		}
+	}
+
 	/* Read and allocate Partition Table Entries */
 	*pgpt_pte = alloc_read_gpt_entries(dev_desc, pgpt_head);
 	if (*pgpt_pte == NULL) {
@@ -946,6 +1129,7 @@ static int is_gpt_valid(struct blk_desc *dev_desc, u64 lba,
 
 	if (validate_gpt_entries(pgpt_head, *pgpt_pte)) {
 		free(*pgpt_pte);
+		*pgpt_pte = NULL;
 		return 0;
 	}
 

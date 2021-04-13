@@ -65,7 +65,25 @@
  */
 
 ENTRY(_main)
+#if defined(CONFIG_SPL_BUILD)
+	.equ SCTLR_A_BIT,		(1 << 1)
+	.equ SCTLR_SA_BIT,		(1 << 3)
+	.equ SCTLR_I_BIT,		(1 << 12)
 
+/*
+ * Enable the instruction cache, stack pointer
+ * and data access alignment checks
+ */
+	mov	x1, #(SCTLR_I_BIT | SCTLR_A_BIT | SCTLR_SA_BIT)
+	mrs	x0, sctlr_el3
+	orr	x0, x0, x1
+	msr	sctlr_el3, x0
+	isb
+/*
+ * Enable External Abort and SError
+ */
+	msr	daifclr, #4
+#endif
 /*
  * Set up initial C runtime environment and call board_init_f(0).
  */
@@ -83,11 +101,13 @@ ENTRY(_main)
 	/* set up gd here, outside any C code */
 	mov	x18, x0
 	bl	board_init_f_init_reserve
+	bl	board_init_f_init_serial
 
 	mov	x0, #0
 	bl	board_init_f
 
-#if !defined(CONFIG_SPL_BUILD)
+#if (defined(CONFIG_SPL_BUILD) && !defined(CONFIG_TPL_BUILD) && !defined(CONFIG_SPL_SKIP_RELOCATE)) || \
+	!defined(CONFIG_SPL_BUILD)
 /*
  * Set up intermediate environment (new sp and gd) and call
  * relocate_code(addr_moni). Trick here is that we'll return
@@ -95,14 +115,23 @@ ENTRY(_main)
  */
 	ldr	x0, [x18, #GD_START_ADDR_SP]	/* x0 <- gd->start_addr_sp */
 	bic	sp, x0, #0xf	/* 16-byte alignment for ABI compliance */
-	ldr	x18, [x18, #GD_BD]		/* x18 <- gd->bd */
-	sub	x18, x18, #GD_SIZE		/* new GD is below bd */
+	ldr	x18, [x18, #GD_NEW_GD]		/* x18 <- gd->new_gd */
 
+#ifndef CONFIG_SKIP_RELOCATE_UBOOT
 	adr	lr, relocation_return
+#if CONFIG_POSITION_INDEPENDENT
+	/* Add in link-vs-runtime offset */
+	adr	x0, _start		/* x0 <- Runtime value of _start */
+	ldr	x9, _TEXT_BASE		/* x9 <- Linked value of _start */
+	sub	x9, x9, x0		/* x9 <- Run-vs-link offset */
+	add	lr, lr, x9
+#endif
+	/* Add in link-vs-relocation offset */
 	ldr	x9, [x18, #GD_RELOC_OFF]	/* x9 <- gd->reloc_off */
 	add	lr, lr, x9	/* new return address after relocation */
 	ldr	x0, [x18, #GD_RELOCADDR]	/* x0 <- gd->relocaddr */
 	b	relocate_code
+#endif
 
 relocation_return:
 
@@ -113,6 +142,9 @@ relocation_return:
 #endif /* !CONFIG_SPL_BUILD */
 #if defined(CONFIG_SPL_BUILD)
 	bl	spl_relocate_stack_gd           /* may return NULL */
+	/* set up gd here, outside any C code, if new stack is returned */
+	cmp	x0, #0
+	csel	x18, x0, x18, ne
 	/*
 	 * Perform 'sp = (x0 != NULL) ? x0 : sp' while working
 	 * around the constraint that conditional moves can not

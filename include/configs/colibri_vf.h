@@ -48,16 +48,6 @@
 #define CONFIG_SYS_NAND_BASE		NFC_BASE_ADDR
 
 /* Dynamic MTD partition support */
-#define CONFIG_MTD_PARTITIONS
-#define CONFIG_MTD_DEVICE	/* needed for mtdparts commands */
-#define MTDIDS_DEFAULT		"nand0=vf610_nfc"
-#define MTDPARTS_DEFAULT	"mtdparts=vf610_nfc:"		\
-				"128k(vf-bcb)ro,"		\
-				"1408k(u-boot)ro,"		\
-				"512k(u-boot-env),"		\
-				"-(ubi)"
-
-#define CONFIG_FSL_ESDHC
 #define CONFIG_SYS_FSL_ESDHC_ADDR	0
 #define CONFIG_SYS_FSL_ESDHC_NUM	1
 
@@ -179,7 +169,6 @@
 #endif
 
 /* USB Host Support */
-#define CONFIG_USB_EHCI_VF
 #define CONFIG_USB_MAX_CONTROLLER_COUNT 2
 #define CONFIG_EHCI_HCD_INIT_AFTER_RESET
 

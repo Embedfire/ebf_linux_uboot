@@ -8,15 +8,19 @@
  */
 
 #include <common.h>
-#include <inttypes.h>
-#include <stdio_dev.h>
-#include <linux/ctype.h>
-#include <linux/types.h>
-#include <asm/global_data.h>
-#include <libfdt.h>
-#include <fdt_support.h>
 #include <exports.h>
+#include <fdt_support.h>
 #include <fdtdec.h>
+#include <inttypes.h>
+#ifdef CONFIG_MTD_BLK
+#include <mtd_blk.h>
+#endif
+#include <stdio_dev.h>
+#include <asm/arch/hotkey.h>
+#include <asm/global_data.h>
+#include <linux/ctype.h>
+#include <linux/libfdt.h>
+#include <linux/types.h>
 
 /**
  * fdt_getprop_u32_default_node - Return a node's property or a default
@@ -274,9 +278,17 @@ int fdt_initrd(void *fdt, ulong initrd_start, ulong initrd_end)
 
 int fdt_chosen(void *fdt)
 {
+	/*
+	 * "bootargs_ext" is used when dtbo is applied.
+	 */
+	const char *arr_bootargs[] = { "bootargs", "bootargs_ext" };
 	int   nodeoffset;
 	int   err;
+	int   i;
 	char  *str;		/* used to set string properties */
+	int dump;
+
+	dump = is_hotkey(HK_CMDLINE);
 
 	err = fdt_check_header(fdt);
 	if (err < 0) {
@@ -291,6 +303,50 @@ int fdt_chosen(void *fdt)
 
 	str = env_get("bootargs");
 	if (str) {
+#ifdef CONFIG_ARCH_ROCKCHIP
+		const char *bootargs;
+
+		if (dump)
+			printf("## U-Boot bootargs: %s\n", str);
+
+		for (i = 0; i < ARRAY_SIZE(arr_bootargs); i++) {
+			bootargs = fdt_getprop(fdt, nodeoffset,
+					       arr_bootargs[i], NULL);
+			if (bootargs) {
+				if (dump)
+					printf("## Kernel %s: %s\n",
+					       arr_bootargs[i], bootargs);
+				/*
+				 * Append kernel bootargs
+				 * If use AB system, delete default "root=" which route
+				 * to rootfs. Then the ab bootctl will choose the
+				 * high priority system to boot and add its UUID
+				 * to cmdline. The format is "roo=PARTUUID=xxxx...".
+				 */
+				hotkey_run(HK_INITCALL);
+#ifdef CONFIG_ANDROID_AB
+				env_update_filter("bootargs", bootargs, "root=");
+#else
+				env_update("bootargs", bootargs);
+#endif
+#ifdef CONFIG_MTD_BLK
+				char *mtd_par_info = mtd_part_parse();
+
+				if (mtd_par_info) {
+					if (memcmp(env_get("devtype"), "mtd", 3) == 0)
+						env_update("bootargs", mtd_par_info);
+				}
+#endif
+				/*
+				 * Initrd fixup: remove unused "initrd=0x...,0x...",
+				 * this for compatible with legacy parameter.txt
+				 */
+				env_delete("bootargs", "initrd=", 0);
+			}
+#endif
+		}
+
+		str = env_get("bootargs");
 		err = fdt_setprop(fdt, nodeoffset, "bootargs", str,
 				  strlen(str) + 1);
 		if (err < 0) {
@@ -299,6 +355,9 @@ int fdt_chosen(void *fdt)
 			return err;
 		}
 	}
+
+	if (dump)
+		printf("## Merged bootargs: %s\n", env_get("bootargs"));
 
 	return fdt_fixup_stdout(fdt, nodeoffset);
 }
@@ -410,6 +469,45 @@ static int fdt_pack_reg(const void *fdt, void *buf, u64 *address, u64 *size,
 	return p - (char *)buf;
 }
 
+int fdt_record_loadable(void *blob, u32 index, const char *name,
+			uintptr_t load_addr, u32 size, uintptr_t entry_point,
+			const char *type, const char *os)
+{
+	int err, node;
+
+	err = fdt_check_header(blob);
+	if (err < 0) {
+		printf("%s: %s\n", __func__, fdt_strerror(err));
+		return err;
+	}
+
+	/* find or create "/fit-images" node */
+	node = fdt_find_or_add_subnode(blob, 0, "fit-images");
+	if (node < 0)
+			return node;
+
+	/* find or create "/fit-images/<name>" node */
+	node = fdt_find_or_add_subnode(blob, node, name);
+	if (node < 0)
+		return node;
+
+	/*
+	 * We record these as 32bit entities, possibly truncating addresses.
+	 * However, spl_fit.c is not 64bit safe either: i.e. we should not
+	 * have an issue here.
+	 */
+	fdt_setprop_u32(blob, node, "load-addr", load_addr);
+	if (entry_point != -1)
+		fdt_setprop_u32(blob, node, "entry-point", entry_point);
+	fdt_setprop_u32(blob, node, "size", size);
+	if (type)
+		fdt_setprop_string(blob, node, "type", type);
+	if (os)
+		fdt_setprop_string(blob, node, "os", os);
+
+	return node;
+}
+
 #ifdef CONFIG_NR_DRAM_BANKS
 #define MEMORY_BANKS_MAX CONFIG_NR_DRAM_BANKS
 #else
@@ -460,21 +558,55 @@ int fdt_fixup_memory_banks(void *blob, u64 start[], u64 size[], int banks)
 	}
 	return 0;
 }
-#endif
 
 int fdt_fixup_memory(void *blob, u64 start, u64 size)
 {
 	return fdt_fixup_memory_banks(blob, &start, &size, 1);
 }
 
+int fdt_update_reserved_memory(void *blob, char *name, u64 start, u64 size)
+{
+	int nodeoffset, len, err;
+	u8 tmp[16]; /* Up to 64-bit address + 64-bit size */
+
+#if 0
+	/*name is rockchip_logo*/
+	nodeoffset = fdt_find_or_add_subnode(blob, 0, "reserved-memory");
+	if (nodeoffset < 0)
+		return nodeoffset;
+	printf("hjc>>reserved-memory>>%s, nodeoffset:%d\n", __func__, nodeoffset);
+	nodeoffset = fdt_find_or_add_subnode(blob, nodeoffset, name);
+	if (nodeoffset < 0)
+		return nodeoffset;
+#else
+	nodeoffset = fdt_node_offset_by_compatible(blob, 0, name);
+	if (nodeoffset < 0)
+		debug("Can't find nodeoffset: %d\n", nodeoffset);
+#endif
+	len = fdt_pack_reg(blob, tmp, &start, &size, 1);
+	err = fdt_setprop(blob, nodeoffset, "reg", tmp, len);
+	if (err < 0) {
+		printf("WARNING: could not set %s %s.\n",
+				"reg", fdt_strerror(err));
+		return err;
+	}
+
+	return nodeoffset;
+}
+#endif
+
 void fdt_fixup_ethernet(void *fdt)
 {
-	int i, j, prop;
+	int i = 0, j, prop;
 	char *tmp, *end;
 	char mac[16];
 	const char *path;
 	unsigned char mac_addr[ARP_HLEN];
 	int offset;
+#ifdef FDT_SEQ_MACADDR_FROM_ENV
+	int nodeoff;
+	const struct fdt_property *fdt_prop;
+#endif
 
 	if (fdt_path_offset(fdt, "/aliases") < 0)
 		return;
@@ -487,7 +619,7 @@ void fdt_fixup_ethernet(void *fdt)
 		offset = fdt_first_property_offset(fdt,
 			fdt_path_offset(fdt, "/aliases"));
 		/* Select property number 'prop' */
-		for (i = 0; i < prop; i++)
+		for (j = 0; j < prop; j++)
 			offset = fdt_next_property_offset(fdt, offset);
 
 		if (offset < 0)
@@ -496,11 +628,16 @@ void fdt_fixup_ethernet(void *fdt)
 		path = fdt_getprop_by_offset(fdt, offset, &name, NULL);
 		if (!strncmp(name, "ethernet", 8)) {
 			/* Treat plain "ethernet" same as "ethernet0". */
-			if (!strcmp(name, "ethernet"))
+			if (!strcmp(name, "ethernet")
+#ifdef FDT_SEQ_MACADDR_FROM_ENV
+			 || !strcmp(name, "ethernet0")
+#endif
+			)
 				i = 0;
+#ifndef FDT_SEQ_MACADDR_FROM_ENV
 			else
 				i = trailing_strtol(name);
-
+#endif
 			if (i != -1) {
 				if (i == 0)
 					strcpy(mac, "ethaddr");
@@ -509,6 +646,14 @@ void fdt_fixup_ethernet(void *fdt)
 			} else {
 				continue;
 			}
+#ifdef FDT_SEQ_MACADDR_FROM_ENV
+			nodeoff = fdt_path_offset(fdt, path);
+			fdt_prop = fdt_get_property(fdt, nodeoff, "status",
+						    NULL);
+			if (fdt_prop && !strcmp(fdt_prop->data, "disabled"))
+				continue;
+			i++;
+#endif
 			tmp = env_get(mac);
 			if (!tmp)
 				continue;
@@ -1655,3 +1800,34 @@ int fdt_fixup_display(void *blob, const char *path, const char *display)
 	}
 	return toff;
 }
+
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+/**
+ * fdt_overlay_apply_verbose - Apply an overlay with verbose error reporting
+ *
+ * @fdt: ptr to device tree
+ * @fdto: ptr to device tree overlay
+ *
+ * Convenience function to apply an overlay and display helpful messages
+ * in the case of an error
+ */
+int fdt_overlay_apply_verbose(void *fdt, void *fdto)
+{
+	int err;
+	bool has_symbols;
+
+	err = fdt_path_offset(fdt, "/__symbols__");
+	has_symbols = err >= 0;
+
+	err = fdt_overlay_apply(fdt, fdto);
+	if (err < 0) {
+		printf("failed on fdt_overlay_apply(): %s\n",
+				fdt_strerror(err));
+		if (!has_symbols) {
+			printf("base fdt does did not have a /__symbols__ node\n");
+			printf("make sure you've compiled with -@\n");
+		}
+	}
+	return err;
+}
+#endif

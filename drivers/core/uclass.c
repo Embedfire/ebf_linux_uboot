@@ -34,6 +34,9 @@ struct uclass *uclass_find(enum uclass_id key)
 	list_for_each_entry(uc, &gd->uclass_root, sibling_node) {
 		if (uc->uc_drv->id == key)
 			return uc;
+
+		if (uc->uc_drv->id == UCLASS_ROOT)
+			break;
 	}
 
 	return NULL;
@@ -158,6 +161,20 @@ const char *uclass_get_name(enum uclass_id id)
 	return uc->uc_drv->name;
 }
 
+enum uclass_id uclass_get_by_name(const char *name)
+{
+	int i;
+
+	for (i = 0; i < UCLASS_COUNT; i++) {
+		struct uclass_driver *uc_drv = lists_uclass_lookup(i);
+
+		if (uc_drv && !strcmp(uc_drv->name, name))
+			return i;
+	}
+
+	return UCLASS_INVALID;
+}
+
 int uclass_find_device(enum uclass_id id, int index, struct udevice **devp)
 {
 	struct uclass *uc;
@@ -243,7 +260,7 @@ int uclass_find_device_by_seq(enum uclass_id id, int seq_or_req_seq,
 	int ret;
 
 	*devp = NULL;
-	debug("%s: %d %d\n", __func__, find_req_seq, seq_or_req_seq);
+	pr_debug("%s: %d %d\n", __func__, find_req_seq, seq_or_req_seq);
 	if (seq_or_req_seq == -1)
 		return -ENODEV;
 	ret = uclass_get(id, &uc);
@@ -251,15 +268,15 @@ int uclass_find_device_by_seq(enum uclass_id id, int seq_or_req_seq,
 		return ret;
 
 	list_for_each_entry(dev, &uc->dev_head, uclass_node) {
-		debug("   - %d %d '%s'\n", dev->req_seq, dev->seq, dev->name);
+		pr_debug("   - %d %d '%s'\n", dev->req_seq, dev->seq, dev->name);
 		if ((find_req_seq ? dev->req_seq : dev->seq) ==
 				seq_or_req_seq) {
 			*devp = dev;
-			debug("   - found\n");
+			pr_debug("   - found\n");
 			return 0;
 		}
 	}
-	debug("   - not found\n");
+	pr_debug("   - not found\n");
 
 	return -ENODEV;
 }
@@ -443,6 +460,34 @@ int uclass_get_device_by_ofnode(enum uclass_id id, ofnode node,
 }
 
 #if CONFIG_IS_ENABLED(OF_CONTROL)
+int uclass_get_device_by_phandle_id(enum uclass_id id, int phandle_id,
+				    struct udevice **devp)
+{
+	struct udevice *dev;
+	struct uclass *uc;
+	int ret;
+
+	*devp = NULL;
+	ret = uclass_get(id, &uc);
+	if (ret)
+		return ret;
+
+	ret = -ENODEV;
+	list_for_each_entry(dev, &uc->dev_head, uclass_node) {
+		uint phandle;
+
+		phandle = dev_read_phandle(dev);
+
+		if (phandle == phandle_id) {
+			*devp = dev;
+			ret = 0;
+			break;
+		}
+	}
+
+	return uclass_get_device_tail(dev, ret, devp);
+}
+
 int uclass_get_device_by_phandle(enum uclass_id id, struct udevice *parent,
 				 const char *name, struct udevice **devp)
 {
@@ -641,3 +686,8 @@ int uclass_pre_remove_device(struct udevice *dev)
 	return 0;
 }
 #endif
+
+UCLASS_DRIVER(nop) = {
+	.id		= UCLASS_NOP,
+	.name		= "nop",
+};

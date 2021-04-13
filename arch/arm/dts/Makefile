@@ -29,6 +29,9 @@ dtb-$(CONFIG_EXYNOS5) += exynos5250-arndale.dtb \
 dtb-$(CONFIG_EXYNOS7420) += exynos7420-espresso7420.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3036-sdk.dtb \
+	rk3066a-mk808.dtb \
+	rk3126-evb.dtb \
+	rk3128-evb.dtb \
 	rk3188-radxarock.dtb \
 	rk3288-evb.dtb \
 	rk3288-fennec.dtb \
@@ -41,6 +44,8 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += \
 	rk3288-veyron-jerry.dtb \
 	rk3288-veyron-mickey.dtb \
 	rk3288-veyron-minnie.dtb \
+	rk3288-vyasa.dtb \
+	rk3308-evb.dtb \
 	rk3328-evb.dtb \
 	rk3368-lion.dtb \
 	rk3368-sheep.dtb \

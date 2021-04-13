@@ -26,7 +26,6 @@
 #define CONFIG_TIMESTAMP
 
 /* FLASH related */
-#define CONFIG_MTD_DEVICE
 
 #define CONFIG_SMC911X_32_BIT
 /* dummy: referenced by examples/standalone/smc911x_eeprom.c */
@@ -230,8 +229,6 @@
 #define CONFIG_NR_DRAM_BANKS		3
 /* for LD20; the last 64 byte is used for dynamic DDR PHY training */
 #define CONFIG_SYS_MEM_TOP_HIDE		64
-
-#define CONFIG_PANIC_HANG
 
 #define CONFIG_SYS_INIT_SP_ADDR		(CONFIG_SYS_TEXT_BASE)
 

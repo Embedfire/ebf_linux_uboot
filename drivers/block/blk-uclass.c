@@ -10,6 +10,7 @@
 #include <dm.h>
 #include <dm/device-internal.h>
 #include <dm/lists.h>
+#include <dm/uclass-internal.h>
 
 static const char *if_typename_str[IF_TYPE_COUNT] = {
 	[IF_TYPE_IDE]		= "ide",
@@ -23,6 +24,11 @@ static const char *if_typename_str[IF_TYPE_COUNT] = {
 	[IF_TYPE_HOST]		= "host",
 	[IF_TYPE_SYSTEMACE]	= "ace",
 	[IF_TYPE_NVME]		= "nvme",
+	[IF_TYPE_RKNAND]	= "rknand",
+	[IF_TYPE_SPINAND]	= "spinand",
+	[IF_TYPE_SPINOR]	= "spinor",
+	[IF_TYPE_RAMDISK]	= "ramdisk",
+	[IF_TYPE_MTD]		= "mtd",
 };
 
 static enum uclass_id if_type_uclass_id[IF_TYPE_COUNT] = {
@@ -36,10 +42,15 @@ static enum uclass_id if_type_uclass_id[IF_TYPE_COUNT] = {
 	[IF_TYPE_SATA]		= UCLASS_AHCI,
 	[IF_TYPE_HOST]		= UCLASS_ROOT,
 	[IF_TYPE_NVME]		= UCLASS_NVME,
+	[IF_TYPE_RKNAND]	= UCLASS_RKNAND,
+	[IF_TYPE_SPINAND]	= UCLASS_SPI_FLASH,
+	[IF_TYPE_SPINOR]	= UCLASS_SPI_FLASH,
+	[IF_TYPE_RAMDISK]	= UCLASS_RAMDISK,
+	[IF_TYPE_MTD]		= UCLASS_MTD,
 	[IF_TYPE_SYSTEMACE]	= UCLASS_INVALID,
 };
 
-static enum if_type if_typename_to_iftype(const char *if_typename)
+enum if_type if_typename_to_iftype(const char *if_typename)
 {
 	int i;
 
@@ -115,9 +126,30 @@ struct blk_desc *blk_get_devnum_by_typename(const char *if_typename, int devnum)
 
 		/* Find out the parent device uclass */
 		if (device_get_uclass_id(dev->parent) != uclass_id) {
+#ifdef CONFIG_MTD_BLK
+			/*
+			 * The normal mtd block attachment steps are
+			 * UCLASS_BLK -> UCLASS_MTD -> UCLASS_(SPI or NAND).
+			 * Since the spi flash frame is attached to
+			 * UCLASS_SPI_FLASH, this make mistake to find
+			 * the UCLASS_MTD when find the mtd block device.
+			 * Fix it here when enable CONFIG_MTD_BLK.
+			 */
+			if ((if_type == IF_TYPE_MTD) &&
+			    (devnum == BLK_MTD_SPI_NOR)) {
+				debug("Fix the spi flash uclass different\n");
+			} else {
+				debug("%s: parent uclass %d, this dev %d\n",
+				      __func__,
+				      device_get_uclass_id(dev->parent),
+				      uclass_id);
+				continue;
+			}
+#else
 			debug("%s: parent uclass %d, this dev %d\n", __func__,
 			      device_get_uclass_id(dev->parent), uclass_id);
 			continue;
+#endif
 		}
 
 		if (device_probe(dev))
@@ -294,9 +326,6 @@ ulong blk_read_devnum(enum if_type if_type, int devnum, lbaint_t start,
 	if (IS_ERR_VALUE(n))
 		return n;
 
-	/* flush cache after read */
-	flush_cache((ulong)buffer, blkcnt * desc->blksz);
-
 	return n;
 }
 
@@ -334,7 +363,7 @@ int blk_first_device(int if_type, struct udevice **devp)
 	struct blk_desc *desc;
 	int ret;
 
-	ret = uclass_first_device(UCLASS_BLK, devp);
+	ret = uclass_find_first_device(UCLASS_BLK, devp);
 	if (ret)
 		return ret;
 	if (!*devp)
@@ -343,7 +372,7 @@ int blk_first_device(int if_type, struct udevice **devp)
 		desc = dev_get_uclass_platdata(*devp);
 		if (desc->if_type == if_type)
 			return 0;
-		ret = uclass_next_device(devp);
+		ret = uclass_find_next_device(devp);
 		if (ret)
 			return ret;
 	} while (*devp);
@@ -359,7 +388,7 @@ int blk_next_device(struct udevice **devp)
 	desc = dev_get_uclass_platdata(*devp);
 	if_type = desc->if_type;
 	do {
-		ret = uclass_next_device(devp);
+		ret = uclass_find_next_device(devp);
 		if (ret)
 			return ret;
 		if (!*devp)

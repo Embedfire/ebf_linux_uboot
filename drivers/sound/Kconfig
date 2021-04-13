@@ -31,6 +31,16 @@ config I2S_SAMSUNG
 	  option provides an implementation for sound_init() and
 	  sound_play().
 
+config I2S_ROCKCHIP
+	bool "Enable I2S support for rockchip SoCs"
+	depends on SOUND
+	help
+	  Rockchip SoCs support an I2S interface for sending audio
+	  data to an audio codec. This option enables support for this,
+	  using one of the available audio codec drivers. Enabling this
+	  option provides an implementation for sound_init() and
+	  sound_play().
+
 config SOUND_MAX98095
 	bool "Support Maxim max98095 audio codec"
 	depends on I2S_SAMSUNG
@@ -38,6 +48,19 @@ config SOUND_MAX98095
 	  Enable the max98095 audio codec. This is connected via I2S for
 	  audio data and I2C for codec control. At present it only works
 	  with the Samsung I2S driver.
+
+config SOUND_RK817
+	bool "Support Rockchip rk809/rk817 audio codec"
+	depends on I2S_ROCKCHIP && PMIC_RK8XX
+	help
+	  Enable the rk809/rk817 audio codec. This is connected via I2S for
+	  audio data and I2C for codec control.
+
+config SOUND_ROCKCHIP
+	bool "Support Rockchip Simple Sound Card"
+	depends on I2S_ROCKCHIP
+	help
+	  Enable the Rockchip Simple Sound Card.
 
 config SOUND_SANDBOX
 	bool "Support sandbox emulated audio codec"

@@ -198,7 +198,6 @@ enum env_valid {
 };
 
 enum env_location {
-	ENVL_DATAFLASH,
 	ENVL_EEPROM,
 	ENVL_EXT4,
 	ENVL_FAT,
@@ -211,6 +210,7 @@ enum env_location {
 	ENVL_SPI_FLASH,
 	ENVL_UBI,
 	ENVL_NOWHERE,
+	ENVL_BLK,
 
 	ENVL_COUNT,
 	ENVL_UNKNOWN,
@@ -288,6 +288,9 @@ char *env_get_default(const char *name);
 
 /* [re]set to the default environment */
 void set_default_env(const char *s);
+
+/* [re]set to the board environment */
+int set_board_env(const char *vars, int size, int flags, bool ready);
 
 /* [re]set individual variables to their value in the default environment */
 int set_default_vars(int nvars, char * const vars[]);

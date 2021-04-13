@@ -24,15 +24,15 @@ int run_usb_dnl_gadget(int usbctrl_index, char *usb_dnl_gadget)
 	bool dfu_reset = false;
 	int ret, i = 0;
 
-	ret = board_usb_init(usbctrl_index, USB_INIT_DEVICE);
+	ret = usb_gadget_initialize(usbctrl_index);
 	if (ret) {
-		error("board usb init failed\n");
+		pr_err("usb_gadget_initialize failed\n");
 		return CMD_RET_FAILURE;
 	}
 	g_dnl_clear_detach();
 	ret = g_dnl_register(usb_dnl_gadget);
 	if (ret) {
-		error("g_dnl_register failed");
+		pr_err("g_dnl_register failed");
 		return CMD_RET_FAILURE;
 	}
 
@@ -75,7 +75,7 @@ int run_usb_dnl_gadget(int usbctrl_index, char *usb_dnl_gadget)
 			ret = dfu_flush(dfu_get_defer_flush(), NULL, 0, 0);
 			dfu_set_defer_flush(NULL);
 			if (ret) {
-				error("Deferred dfu_flush() failed!");
+				pr_err("Deferred dfu_flush() failed!");
 				goto exit;
 			}
 		}
@@ -85,7 +85,7 @@ int run_usb_dnl_gadget(int usbctrl_index, char *usb_dnl_gadget)
 	}
 exit:
 	g_dnl_unregister();
-	board_usb_cleanup(usbctrl_index, USB_INIT_DEVICE);
+	usb_gadget_release(usbctrl_index);
 
 	if (dfu_reset)
 		do_reset(NULL, 0, 0, NULL);

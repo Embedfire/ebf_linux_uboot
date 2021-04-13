@@ -29,12 +29,14 @@ struct block_drvr {
 #define PART_TYPE_ISO		0x03
 #define PART_TYPE_AMIGA		0x04
 #define PART_TYPE_EFI		0x05
+#define PART_TYPE_RKPARM	0x06
 
 /* maximum number of partition entries supported by search */
 #define DOS_ENTRY_NUMBERS	8
 #define ISO_ENTRY_NUMBERS	64
 #define MAC_ENTRY_NUMBERS	64
 #define AMIGA_ENTRY_NUMBERS	8
+#define RKPARM_ENTRY_NUMBERS	128
 /*
  * Type string for U-Boot bootable partitions
  */
@@ -98,6 +100,12 @@ int host_get_dev_err(int dev, struct blk_desc **blk_devp);
 
 /* disk/part.c */
 int part_get_info(struct blk_desc *dev_desc, int part, disk_partition_t *info);
+/**
+ * part_get_info_whole_disk() - get partition info for the special case of
+ * a partition occupying the entire disk.
+ */
+int part_get_info_whole_disk(struct blk_desc *dev_desc, disk_partition_t *info);
+const char *part_get_type(struct blk_desc *dev_desc);
 void part_print(struct blk_desc *dev_desc);
 void part_init(struct blk_desc *dev_desc);
 void dev_print(struct blk_desc *dev_desc);
@@ -203,6 +211,11 @@ static inline struct blk_desc *mg_disk_get_dev(int dev) { return NULL; }
 
 static inline int part_get_info(struct blk_desc *dev_desc, int part,
 				disk_partition_t *info) { return -1; }
+static inline int part_get_info_whole_disk(struct blk_desc *dev_desc,
+					   disk_partition_t *info)
+{ return -1; }
+
+static inline const char *part_get_type(struct blk_desc *dev_desc) { return NULL; }
 static inline void part_print(struct blk_desc *dev_desc) {}
 static inline void part_init(struct blk_desc *dev_desc) {}
 static inline void dev_print(struct blk_desc *dev_desc) {}
@@ -218,21 +231,15 @@ static inline int blk_get_device_part_str(const char *ifname,
 #endif
 
 /*
- * We don't support printing partition information in SPL and only support
- * getting partition information in a few cases.
+ * We don't support printing partition information in SPL.
  */
 #ifdef CONFIG_SPL_BUILD
-# define part_print_ptr(x)	NULL
-# if defined(CONFIG_SPL_EXT_SUPPORT) || defined(CONFIG_SPL_FAT_SUPPORT) || \
-	defined(CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_PARTITION)
-#  define part_get_info_ptr(x)	x
-# else
-#  define part_get_info_ptr(x)	NULL
-# endif
+#define part_print_ptr(x)	NULL
 #else
-#define part_print_ptr(x)	x
-#define part_get_info_ptr(x)	x
+#define part_print_ptr(x)       x
 #endif
+
+#define part_get_info_ptr(x)	x
 
 
 struct part_driver {
@@ -271,8 +278,9 @@ struct part_driver {
 #define U_BOOT_PART_TYPE(__name)					\
 	ll_entry_declare(struct part_driver, __name, part_driver)
 
-#if CONFIG_IS_ENABLED(EFI_PARTITION)
 #include <part_efi.h>
+
+#if CONFIG_IS_ENABLED(EFI_PARTITION)
 /* disk/part_efi.c */
 /**
  * write_gpt_table() - Write the GUID Partition Table to disk

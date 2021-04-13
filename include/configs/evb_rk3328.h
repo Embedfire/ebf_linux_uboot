@@ -9,16 +9,17 @@
 
 #include <configs/rk3328_common.h>
 
+#define ROCKCHIP_DEVICE_SETTINGS \
+		"stdout=serial,vidconsole\0" \
+		"stderr=serial,vidconsole\0"
+
 #define CONFIG_SYS_MMC_ENV_DEV 1
-/*
- * SPL @ 32k for ~36k
- * ENV @ 96k
- * u-boot @ 128K
- */
-#define CONFIG_ENV_OFFSET (96 * 1024)
 
 #define SDRAM_BANK_SIZE			(2UL << 30)
 
-#define CONFIG_CONSOLE_SCROLL_LINES		10
+#ifndef CONFIG_SPL_BUILD
+#undef CONFIG_BOOTCOMMAND
+#define CONFIG_BOOTCOMMAND RKIMG_BOOTCOMMAND
+#endif
 
 #endif

@@ -9,15 +9,15 @@
 
 #include <configs/rk3399_common.h>
 
-/*
- * SPL @ 32kB for ~130kB
- * ENV @ 240KB for 8kB
- * FIT payload (ATF, U-Boot, FDT) @ 256kB
- */
-#undef CONFIG_ENV_OFFSET
-#define CONFIG_ENV_OFFSET (240 * 1024)
-
+#if defined(CONFIG_ENV_IS_IN_MMC)
 #define CONFIG_SYS_MMC_ENV_DEV 1
+#elif defined(CONFIG_ENV_IS_IN_SPI_FLASH)
+#define CONFIG_ENV_SECT_SIZE		(8 * 1024)
+#define CONFIG_ENV_SPI_BUS		CONFIG_SF_DEFAULT_BUS
+#define CONFIG_ENV_SPI_CS		CONFIG_SF_DEFAULT_CS
+#define CONFIG_ENV_SPI_MODE		CONFIG_SF_DEFAULT_MODE
+#define CONFIG_ENV_SPI_MAX_HZ	CONFIG_SF_DEFAULT_SPEED
+#endif
 
 #define SDRAM_BANK_SIZE			(2UL << 30)
 
@@ -28,5 +28,9 @@
 #define CONFIG_BMP_16BPP
 #define CONFIG_BMP_24BPP
 #define CONFIG_BMP_32BPP
+
+#define ROCKCHIP_DEVICE_SETTINGS \
+		"stdout=serial,vidconsole\0" \
+		"stderr=serial,vidconsole\0"
 
 #endif

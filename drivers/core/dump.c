@@ -14,12 +14,11 @@ static void show_devices(struct udevice *dev, int depth, int last_flag)
 {
 	int i, is_last;
 	struct udevice *child;
-	char class_name[12];
+	int pre_reloc, remained;
 
 	/* print the first 11 characters to not break the tree-format. */
-	strlcpy(class_name, dev->uclass->uc_drv->name, sizeof(class_name));
-	printf(" %-11s [ %c ]    ", class_name,
-	       dev->flags & DM_FLAG_ACTIVATED ? '+' : ' ');
+	printf(" %-10.10s [ %c ]   %-25.25s  ", dev->uclass->uc_drv->name,
+	       dev->flags & DM_FLAG_ACTIVATED ? '+' : ' ', dev->driver->name);
 
 	for (i = depth; i >= 0; i--) {
 		is_last = (last_flag >> i) & 1;
@@ -36,7 +35,14 @@ static void show_devices(struct udevice *dev, int depth, int last_flag)
 		}
 	}
 
-	printf("%s\n", dev->name);
+	pre_reloc = dev_read_bool(dev, "u-boot,dm-pre-reloc") ||
+		    dev_read_bool(dev, "u-boot,dm-spl");
+	if (pre_reloc)
+		remained = !list_empty(&dev->uclass_node);
+	else
+		remained = 0;
+
+	printf("%s %s%s\n", dev->name, pre_reloc ? "*" : "", remained ? "*" : "");
 
 	list_for_each_entry(child, &dev->child_head, sibling_node) {
 		is_last = list_is_last(&child->sibling_node, &dev->child_head);
@@ -50,8 +56,8 @@ void dm_dump_all(void)
 
 	root = dm_root();
 	if (root) {
-		printf(" Class       Probed   Name\n");
-		printf("----------------------------------------\n");
+		printf(" Class      Probed        Driver               Name\n");
+		printf("----------------------------------------------------------\n");
 		show_devices(root, -1, 0);
 	}
 }
@@ -65,8 +71,10 @@ void dm_dump_all(void)
  */
 static void dm_display_line(struct udevice *dev)
 {
-	printf("- %c %s @ %08lx",
-	       dev->flags & DM_FLAG_ACTIVATED ? '*' : ' ',
+	printf("  %c [ %c ] %s @ %08lx",
+	       dev_read_bool(dev, "u-boot,dm-pre-pre_reloc") ||
+	       dev_read_bool(dev, "u-boot,dm-spl") ? '*' : ' ',
+	       dev->flags & DM_FLAG_ACTIVATED ? '+' : ' ',
 	       dev->name, (ulong)map_to_sysmem(dev));
 	if (dev->seq != -1 || dev->req_seq != -1)
 		printf(", seq %d, (req %d)", dev->seq, dev->req_seq);

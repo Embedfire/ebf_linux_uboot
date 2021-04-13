@@ -216,7 +216,6 @@
 
 #define CONFIG_SYS_MEMTEST_START	0x00200000	/* memtest works on */
 #define CONFIG_SYS_MEMTEST_END		0x1fffffff
-#define CONFIG_PANIC_HANG		/* do not reset board on panic */
 
 /* DDR Setup */
 #define CONFIG_SYS_DDR_RAW_TIMING
@@ -350,7 +349,6 @@ extern unsigned long get_sdram_size(void);
 #define CONFIG_SYS_NAND_BASE_PHYS	CONFIG_SYS_NAND_BASE
 #endif
 
-#define CONFIG_MTD_DEVICE
 #define CONFIG_MTD_PARTITION
 #define MTDIDS_DEFAULT			"nand0=ff800000.flash"
 #define MTDPARTS_DEFAULT		\
