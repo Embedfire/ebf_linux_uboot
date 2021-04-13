@@ -358,12 +358,10 @@
 
 &usbotg1 {
 	status = "okay";
-	extcon = <&ptn5110>;
 };
 
 &usbotg2 {
 	status = "okay";
-	extcon = <&ptn5110_2>;
 };
 
 &usdhc2 {
