@@ -20,6 +20,11 @@
 #include <linux/sizes.h>
 #include <mmc.h>
 #include <miiphy.h>
+#include <stdio.h>
+#include <configs/mx6ullfire.h>
+
+int lcdreset=0;
+ 
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -145,6 +150,7 @@ int board_init(void)
 {
 	/* Address of boot parameters */
 	gd->bd->bi_boot_params = PHYS_SDRAM + 0x100;
+	
 
 #ifdef	CONFIG_FEC_MXC
 	setup_fec(CONFIG_FEC_ENET_DEV);
@@ -169,6 +175,19 @@ static const struct boot_mode board_boot_modes[] = {
 
 int board_late_init(void)
 {
+	gpio_request(IMX_GPIO_NR(3, 10), "sd0");
+	gpio_direction_input(IMX_GPIO_NR(3, 10));
+	lcdreset = gpio_get_value(IMX_GPIO_NR(3, 10));
+	if(lcdreset)
+	{
+		env_set("bootcmd_mmc0","lhf");
+	}
+	else
+	{
+		env_set("bootcmd_mmc0","setenv devtype mmc; setenv mmcdev 0; setenv bootpart 0:1 ; setenv rootfpart 0:2 ; run boot");
+	}
+
+
 #ifdef CONFIG_CMD_BMODE
 	add_board_boot_modes(board_boot_modes);
 #endif
