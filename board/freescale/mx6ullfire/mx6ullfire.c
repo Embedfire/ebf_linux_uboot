@@ -200,6 +200,9 @@ int board_late_init(void)
 	env_set("board_rev", "14X14");
 #endif
 
+
+	
+
 	return 0;
 }
 

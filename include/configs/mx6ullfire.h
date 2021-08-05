@@ -16,6 +16,8 @@
 
 #define PHYS_SDRAM_SIZE	SZ_512M
 
+#define CONFIG_SERIAL_TAG
+
 /* Size of malloc() pool */
 #define CONFIG_SYS_MALLOC_LEN		(16 * SZ_1M)
 

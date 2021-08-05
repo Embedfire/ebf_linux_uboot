@@ -73,7 +73,7 @@
 #if defined(CONFIG_GPIO_HOG)
 #include <asm/gpio.h>
 #endif
-
+#include <asm/setup.h>
 DECLARE_GLOBAL_DATA_PTR;
 
 ulong monitor_flash_len;
@@ -671,6 +671,19 @@ static int run_main_loop(void)
 	return 0;
 }
 
+
+void fastboot_setup(void)
+{
+
+	struct tag_serialnr serialnr;
+	char serial[17];
+
+	get_board_serial(&serialnr);
+	sprintf(serial, "%08x%08x", serialnr.high, serialnr.low);
+	env_set("serial#", serial);
+}
+
+
 /*
  * We hope to remove most of the driver-related init and do it if/when
  * the driver is later used.
@@ -846,6 +859,8 @@ static init_fnc_t init_sequence_r[] = {
 #ifdef CONFIG_BOARD_LATE_INIT
 	board_late_init,
 #endif
+	fastboot_setup,
+
 #if defined(CONFIG_SCSI) && !defined(CONFIG_DM_SCSI)
 	INIT_FUNC_WATCHDOG_RESET
 	initr_scsi,
