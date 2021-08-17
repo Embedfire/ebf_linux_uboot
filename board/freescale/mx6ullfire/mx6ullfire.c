@@ -4,6 +4,7 @@
  */
 
 #include <init.h>
+#include <linux/delay.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/iomux.h>
 #include <asm/arch/imx-regs.h>
@@ -22,6 +23,25 @@
 #include <miiphy.h>
 #include <stdio.h>
 #include <configs/mx6ullfire.h>
+#include <stdlib.h>
+//#include <stdlib.h>
+
+//------------------------------------------------------------
+//时钟控制寄存器
+int *CCM_CCGR2_my=(int *)0x20C4070;
+//LCD_DATA11(GPIO3_16)复用功能选择寄存器
+int *IOMUXC_SW_MUX_CTL_PAD_LCD_DATA11_my=(int *)0x20E0144;
+//PAD属性设置寄存器
+int *IOMUXC_SW_PAD_CTL_PAD_LCD_DATA11_my=(int *)0x20E03D0;
+//GPIO3方向设置寄存器
+int *GPIO3_GDIR_my=(int *)0x20A4004;
+//GPIO输出状态寄存器 
+int *GPIO3_DR_my=(int *)0x20A4000;
+//GPIO输入状态寄存器
+int *GPIO3_PSR_my=(int *)0x20A4008;
+int LCD_DATA11_FLAG_my=-1;
+//------------------------------------------------------------
+
 
 int lcdreset=0;
  
@@ -148,6 +168,12 @@ int board_phy_config(struct phy_device *phydev)
 
 int board_init(void)
 {
+	*(CCM_CCGR2_my)=0xFFFFFFFF;
+	*(IOMUXC_SW_MUX_CTL_PAD_LCD_DATA11_my)=0x05;
+	*(IOMUXC_SW_PAD_CTL_PAD_LCD_DATA11_my)=0x100B0;
+	*(GPIO3_GDIR_my)&=~(1<<16);
+	*(GPIO3_DR_my)|=1<<16;
+
 	/* Address of boot parameters */
 	gd->bd->bi_boot_params = PHYS_SDRAM + 0x100;
 	
@@ -175,19 +201,26 @@ static const struct boot_mode board_boot_modes[] = {
 
 int board_late_init(void)
 {
+
+	mdelay(500);
+	LCD_DATA11_FLAG_my=*(GPIO3_DR_my)>>16&1;
 	gpio_request(IMX_GPIO_NR(3, 10), "sd0");
 	gpio_direction_input(IMX_GPIO_NR(3, 10));
 	lcdreset = gpio_get_value(IMX_GPIO_NR(3, 10));
-	if(lcdreset)
+	
+	if(lcdreset||LCD_DATA11_FLAG_my)
 	{
 		env_set("bootcmd_mmc0","lhf");
+		//printf("\n\npao le emmc\n\n");
 	}
 	else
 	{
 		env_set("bootcmd_mmc0","setenv devtype mmc; setenv mmcdev 0; setenv bootpart 0:1 ; setenv rootfpart 0:2 ; run boot");
+		//printf("\n\npao le sd \n\n");
 	}
+	
 
-
+	
 #ifdef CONFIG_CMD_BMODE
 	add_board_boot_modes(board_boot_modes);
 #endif
