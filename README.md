@@ -6,7 +6,7 @@
 
 安装依赖工具：
 ```
-sudo apt install make gcc-arm-linux-gnueabihf gcc bison flex libssl-dev dpkg-dev lzop
+sudo apt install make gcc-arm-none-eabi gcc bison flex libssl-dev dpkg-dev lzop
 ```
 
 **测试arm-none-eabi-gcc安装是否成功**
