@@ -144,9 +144,13 @@
 	"boot_android ${devtype} ${devnum};"
 #else
 #define RKIMG_BOOTCOMMAND			\
-	"load mmc 1:1 0x02008000 kernel/vmlinuz-5.10.25-rk3399;"	\
-	"load mmc 1:2 0x08300000 /usr/lib/linux-image-5.10.25-rk3399/rockchip/rk3399-doornet2.dtb;"				\
-	"setenv bootargs console=ttyS2,1500000 root=/dev/mmcblk0p2 rw rootfstype=ext4 rootwait;"		\
+	"load mmc ${devnum}:1 0x02008000 kernel/vmlinuz-5.10.25-rk3399;"	\
+	"load mmc ${devnum}:2 0x08300000 /usr/lib/linux-image-5.10.25-rk3399/rockchip/rk3399-doornet2.dtb;"				\
+	"if test ${devnum} = 0; then " \
+		"setenv bootargs console=ttyS2,1500000 root=/dev/mmcblk2p2 rw rootfstype=ext4 rootwait;"		\
+	"elif test ${devnum} = 1; then " \
+		"setenv bootargs console=ttyS2,1500000 root=/dev/mmcblk1p2 rw rootfstype=ext4 rootwait;"		\
+	"fi; " \
 	"booti 0x02008000 - 0x08300000;"
 #endif
 
