@@ -1,0 +1,6 @@
+i.MX8MM FIRE BOARD
+M:	Louis 
+S:	Maintained
+F:	board/freescale/imx8mm_fire/
+F:	include/configs/imx8mm_fire.h
+F:	configs/imx8mm_fire_mmc_defconfig
