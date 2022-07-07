@@ -1764,10 +1764,11 @@ DTBLOB_T *dtoverlay_load_dtb(ulong fdt, char* dt_file,int max_size)
       #else
 
       int dev = mmc_get_env_dev();
-      if (!dev)
-      fs_set_blk_dev("mmc", "0:2", FS_TYPE_ANY);
+
+      if (dev == 2)
+        fs_set_blk_dev("mmc", "2:2", FS_TYPE_ANY);
       else 
-      fs_set_blk_dev("mmc", "1:2", FS_TYPE_ANY);
+        fs_set_blk_dev("mmc", "1:2", FS_TYPE_ANY);
 
       if(fs_read(dt_file,fdt,0,0,&bytes_read)<0)
          dtoverlay_debug("** %s read error\n",dt_file);
@@ -2135,8 +2136,8 @@ void load_env_file(char* env_name,ulong file_addr,loff_t* len_read)
 
    int dev = mmc_get_env_dev();
 
-   if (!dev)
-      fs_set_blk_dev("mmc", "0:1", FS_TYPE_ANY);
+   if (dev == 2)
+      fs_set_blk_dev("mmc", "2:1", FS_TYPE_ANY);
    else 
       fs_set_blk_dev("mmc", "1:1", FS_TYPE_ANY);
 
