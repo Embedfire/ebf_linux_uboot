@@ -313,6 +313,12 @@ int board_late_init(void)
 	board_late_mmc_env_init();
 #endif
 
+int dev = mmc_get_env_dev();
+if (dev == 2)
+	env_set("boot_targets", "mmc2");
+else
+	env_set("boot_targets", "mmc1");
+	
 #ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 	env_set("board_name", "FIRE");
 	env_set("board_rev", "iMX8MM");
