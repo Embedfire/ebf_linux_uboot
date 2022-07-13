@@ -208,9 +208,9 @@ int board_late_init(void)
 	gpio_direction_input(IMX_GPIO_NR(3, 10));
 	lcdreset = gpio_get_value(IMX_GPIO_NR(3, 10));
 	
-	if(lcdreset||LCD_DATA11_FLAG_my)
+	if((lcdreset||LCD_DATA11_FLAG_my))
 	{
-		env_set("bootcmd_mmc0","lhf");
+		env_set("bootcmd_mmc0","if test -n \"${SDBOOT}\"; then setenv devtype mmc; setenv mmcdev 0; setenv bootpart 0:1 ; setenv rootfpart 0:2 ; run boot; fi");
 		//printf("\n\npao le emmc\n\n");
 	}
 	else
