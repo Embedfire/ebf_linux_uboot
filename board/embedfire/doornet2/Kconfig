@@ -1,0 +1,15 @@
+if TARGET_DOORNET2_RK3399
+
+config SYS_BOARD
+	default "doornet2"
+
+config SYS_VENDOR
+	default "embedfire"
+
+config SYS_CONFIG_NAME
+	default "doornet2"
+
+config BOARD_SPECIFIC_OPTIONS
+	def_bool y
+
+endif

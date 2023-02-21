@@ -1,0 +1,5 @@
+DoorNet2 Series
+M:      embedfire <support@embedfire.com>
+S:      Maintained
+F:      board/embedfire/doornet2/
+F:      include/configs/doornet2.h
